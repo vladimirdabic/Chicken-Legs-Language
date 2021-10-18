@@ -1,0 +1,1 @@
+cll -c .\main.cll -o ..\out\cll.exe
