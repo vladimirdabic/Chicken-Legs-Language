@@ -146,10 +146,6 @@ proc build_command(dword argc, byte** argv) {
     // free_tokens(result.tokens);
 }
 
-proc run_subcommand(dword argc, byte** argv) {
-    return;
-}
-
 global proc main(dword argc, byte** argv) -> dword {
     // get program directory
     shift(&argc, &argv);
