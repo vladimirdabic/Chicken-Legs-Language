@@ -178,18 +178,3 @@ global proc main(dword argc, byte** argv) -> dword {
     free(program);
     return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
