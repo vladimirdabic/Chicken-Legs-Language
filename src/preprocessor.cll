@@ -1,6 +1,6 @@
 %include "std.cll"
 %include "file.cll"
-%include "string.cll"
+%include "cstring.cll"
 %include "dynamic_list.cll"
 %include "hashtable.cll"
 %include "scanner.cll"

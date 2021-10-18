@@ -1,0 +1,37 @@
+extern proc __acrt_iob_func(dword _Ix) -> ptr;
+
+%define stdin  [__acrt_iob_func(0)]
+%define stdout [__acrt_iob_func(1)]
+%define stderr [__acrt_iob_func(2)]
+%define NULL [(ptr)0]
+
+extern proc stdcall GetStdHandle(dword id) -> ptr;
+extern proc printf(byte* format, ...);
+extern proc scanf(byte* format, ...);
+extern proc fprintf(ptr file, byte* format, ...);
+extern proc sprintf(byte* buffer, byte* format, ...);
+extern proc calloc(qword num, qword size) -> ptr;
+extern proc exit(dword status);
+extern proc system(byte* command) -> dword;
+extern proc GetModuleFileNameA(ptr hModule, byte* lpFilename, dword nSize) -> dword;
+extern proc _get_pgmptr(ptr* pValue) -> dword;
+
+proc assert(byte value, byte* location, byte* message) {
+    if(!value) {
+        fprintf(stderr, "%s: [ASSERT] %s", location, message);
+        exit(1);
+    }
+}
+
+
+proc min(qword a, qword b) -> qword {
+    if(b < a) return b;
+
+    return a;
+}
+
+proc max(qword a, qword b) -> qword {
+    if(a > b) return a;
+
+    return b;
+}

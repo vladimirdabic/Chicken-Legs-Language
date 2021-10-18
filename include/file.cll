@@ -1,0 +1,37 @@
+
+%define SEEK_CUR     [1]
+%define SEEK_END     [2]
+%define SEEK_SET     [3]
+%define FILENAME_MAX [260]
+%define FOPEN_MAX    [20]
+
+extern proc fopen(byte* file_name, byte* mode) -> ptr;
+extern proc fclose(ptr stream) -> dword;
+extern proc fseek(ptr stream, dword offset, dword origin) -> dword;
+extern proc ftell(ptr stream) -> dword;
+extern proc fread(ptr dest, qword size, qword count, ptr stream) -> qword;
+extern proc rewind(ptr stream);
+extern proc remove(byte* filename) -> dword;
+
+
+proc fread_text(byte* file_name) -> byte* {
+    ptr file_ptr;
+    byte* buffer;
+    dword file_len;
+
+    file_ptr = fopen(file_name, "rb");
+
+    if(file_ptr == (ptr)0)
+        return (ptr)0;
+
+    fseek(file_ptr, 0, SEEK_END);
+    file_len = ftell(file_ptr);
+    rewind(file_ptr);
+
+    buffer = malloc((file_len + 1) * sizeof(byte));
+    fread(buffer, file_len, 1, file_ptr);
+    fclose(file_ptr);
+
+    buffer[file_len] = 0;
+    return buffer;
+}

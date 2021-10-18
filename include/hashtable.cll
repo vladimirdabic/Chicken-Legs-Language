@@ -1,0 +1,255 @@
+%include "std.cll"
+%include "string.cll"
+
+struct HashTableEntry {
+    byte* key;
+    qword value;
+}
+
+
+struct HashTable {
+    HashTableEntry* entries;
+    dword capacity;
+    dword length;
+}
+
+struct HashTableIterator {
+    byte* key;
+    qword value;
+
+    HashTable table;
+    dword index;
+}
+
+proc ht_hash(byte* key) -> qword;
+proc ht_get(HashTable table, byte* key) -> qword;
+proc ht_set(HashTable table, byte* key, qword value) -> byte*;
+proc ht_set_entry(HashTable table, byte* key, qword value, byte do_alloc) -> byte*;
+proc ht_expand(HashTable table) -> byte;
+
+
+%define INITIAL_CAPACITY [16]
+
+proc ht_create() -> HashTable {
+    HashTable table res;
+
+    if(table == NULL)
+        return NULL;
+
+    table.length = 0;
+    table.capacity = INITIAL_CAPACITY;
+
+    table.entries = calloc(table.capacity, sizeof(HashTableEntry*));
+    if(table.entries == NULL) {
+        free((ptr)table);
+        return NULL;
+    }
+
+    dword i = 0;
+    while(i < table.capacity) {
+        table.entries[i] = (HashTableEntry)malloc(sizeof(HashTableEntry));
+        table.entries[i].key = 0;
+        i = i + 1;
+    }
+
+    return table;
+}
+
+proc ht_destroy(HashTable table) {
+    dword i = 0;
+    while(i < table.capacity) {
+        if(table.entries[i].key != NULL) {
+            free(table.entries[i].key);
+            free((ptr)table.entries[i]);
+        }
+        i = i + 1;
+    }
+
+    free(table.entries);
+    free((ptr)table);
+}
+
+%define FNV_OFFSET [14695981039346656037]
+%define FNV_PRIME [1099511628211]
+
+// Return 64-bit FNV-1a hash for key (NULL-terminated). See description:
+// https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+
+proc ht_hash(byte* key) -> qword {
+    qword hash = FNV_OFFSET;
+
+    byte* p = key;
+    while(*p) {
+        hash = hash ^ (*p);
+        hash = hash * FNV_PRIME;
+        p = (byte*)p + 1;
+    }
+
+    return hash;
+}
+
+
+proc ht_get(HashTable table, byte* key) -> qword {
+    qword hash = ht_hash(key);
+    dword index = hash & (table.capacity - 1);
+
+    while(table.entries[index].key != NULL) {
+        if(strcmp(key, table.entries[index].key) == 0) {
+            return table.entries[index].value;
+        }
+
+        index = index + 1;
+        if(index >= table.capacity) {
+            index = 0;
+        }
+    }
+
+    return NULL;
+}
+
+
+proc ht_set(HashTable table, byte* key, qword value) -> byte* {
+    if (value == NULL) {
+        return NULL;
+    }
+
+    // If length will exceed half of current capacity, expand it.
+    if (table.length >= table.capacity / 2) {
+        if (!ht_expand(table)) {
+            return NULL;
+        }
+    }
+
+    // Set entry and update length.
+    // return ht_set_entry(table->entries, table->capacity, key, value, &table->length);
+    return ht_set_entry(table, key, value, true);
+}
+
+
+// Internal function to set an entry (without expanding table).
+proc ht_set_entry(HashTable table, byte* key, qword value, byte do_alloc) -> byte* {
+    HashTableEntry* entries = table.entries;
+    qword capacity = table.capacity;
+
+    // AND hash with capacity-1 to ensure it's within entries array.
+    qword hash = ht_hash(key);
+    dword index = hash & (capacity - 1);
+
+    // Loop till we find an empty entry.
+    while (entries[index].key != NULL) {
+        if (strcmp(key, entries[index].key) == 0) {
+            // Found key (it already exists), update value.
+            entries[index].value = value;
+            return entries[index].key;
+        }
+        // Key wasn't in this slot, move to next (linear probing).
+        index = index + 1;
+        if (index >= capacity) {
+            // At end of entries array, wrap around.
+            index = 0;
+        }
+    }
+
+    // Didn't find key, allocate+copy if needed, then insert it.
+    if (do_alloc == true) {
+        key = strdup(key);
+        if (key == NULL) {
+            return NULL;
+        }
+        table.length = table.length + 1;
+    }
+    entries[index].key = key;
+    entries[index].value = value;
+    return key;
+}
+
+
+// Expand hash table to twice its current size. Return true on success,
+// false if out of memory.
+proc ht_expand(HashTable table) -> byte {
+    // Allocate new entries array.
+    qword new_capacity = table.capacity * 2;
+    if (new_capacity < table.capacity) {
+        return false;
+    }
+    HashTableEntry* new_entries = calloc(new_capacity, sizeof(HashTableEntry*));
+    if (new_entries == NULL) {
+        return false;
+    }
+
+    HashTable new_table res;
+    new_table.entries = new_entries;
+    new_table.capacity = new_capacity;
+
+    qword i = 0;
+    while(i < new_table.capacity) {
+        new_table.entries[i] = (HashTableEntry)malloc(sizeof(HashTableEntry));
+        new_table.entries[i].key = 0;
+        i = i + 1;
+    }
+
+
+    // Iterate entries, move all non-empty ones to new table's entries.
+    i = 0;
+    while(i < table.capacity) {
+        HashTableEntry entry = table.entries[i];
+        if (entry.key != NULL) {
+            ht_set_entry(new_table, entry.key, entry.value, false);
+        }
+        i = i + 1;
+    }
+
+    // Free old entries array and update this table's details.
+    free(table.entries);
+    table.entries = new_table.entries;
+    table.capacity = new_table.capacity;
+    free((ptr)new_table);
+    return true;
+}
+
+
+proc ht_length(HashTable table) -> dword {
+    return table.length;
+}
+
+proc ht_iterator(HashTable table) -> HashTableIterator {
+    HashTableIterator it res;
+    it.table = table;
+    it.index = 0;
+    return it;
+}
+
+proc ht_next(HashTableIterator it) -> byte {
+    // Loop till we've hit end of entries array.
+    HashTable table = it.table;
+    while (it.index < table.capacity) {
+        dword i = it.index;
+        it.index = it.index + 1;
+        if (table.entries[i].key != NULL) {
+            // Found next non-empty item, update iterator key and value.
+            HashTableEntry entry = table.entries[i];
+            it.key = entry.key;
+            it.value = entry.value;
+            return true;
+        }
+    }
+
+    free((ptr)it);
+    return false;
+}
+
+proc ht_print(HashTable table) {
+    HashTableIterator it = ht_iterator(table);
+
+    while(ht_next(it)) {
+        printf("%s = %d\n", it.key, it.value);
+    }
+}
+
+proc ht_print_str(HashTable table) {
+    HashTableIterator it = ht_iterator(table);
+
+    while(ht_next(it)) {
+        printf("%s = %s\n", it.key, (byte*)it.value);
+    }
+}

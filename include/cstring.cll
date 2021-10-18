@@ -1,0 +1,44 @@
+%include "std.cll"
+
+extern proc atoll(byte* str) -> qword;
+extern proc atoi(byte* str) -> dword;
+
+extern proc memchr(ptr str, dword c, qword n) -> ptr;
+extern proc memcmp(ptr str1, ptr str2, qword n) -> dword;
+extern proc memcpy(ptr dest, ptr src, qword size) -> ptr;
+extern proc memmove(ptr dest, ptr src, qword n) -> ptr;
+extern proc memset(ptr str, dword c, qword n) -> ptr;
+
+extern proc strcat(byte* dest, byte* src) -> byte*;
+extern proc strncat(byte* dest, byte* src, qword n) -> byte*;
+extern proc strchr(byte* str, dword n) -> byte*;
+extern proc strncmp(byte* str1, byte* str2, qword n) -> dword;
+extern proc strcoll(byte* str1, byte* str2) -> dword;
+extern proc strcpy(byte* dest, byte* src) -> byte*;
+extern proc strncpy(byte* dest, byte* src, qword n) -> byte*;
+extern proc strcspn(byte* str1, byte* str2) -> qword;
+extern proc strerror(dword errnum) -> byte*;
+extern proc strlen(byte* str) -> qword;
+extern proc strpbrk(byte* str1, byte* str2) -> byte*;
+extern proc strrchr(byte* str, dword c) -> byte*;
+extern proc strspn(byte* str1, byte* str2) -> qword;
+extern proc strstr(byte* haystack, byte* needle) -> byte*;
+extern proc strtok(byte* str, byte* delim) -> byte*;
+extern proc strxfrm(byte* dest, byte* src, qword n) -> qword;
+extern proc strcmp(byte* str1, byte* str2) -> qword;
+extern proc strdup(ptr str) -> byte*;
+
+proc concat(byte* s1, byte* s2) -> byte* {
+    qword len1 = strlen(s1);
+    qword len2 = strlen(s2);
+    byte* result = malloc(len1 + len2 + 1);
+
+    if(result == NULL) {
+        printf("concat() failed to allocate memory for final string");
+        exit(1);
+    }
+
+    memcpy(result, s1, len1);
+    memcpy((ptr)result + len1, s2, len2 + 1);
+    return result;
+}

@@ -1,5 +1,5 @@
 %include "std.cll"
-%include "string.cll"
+%include "cstring.cll"
 %include "dynamic_list.cll"
 %include "hashtable.cll"
 %include "token_types.cll"
