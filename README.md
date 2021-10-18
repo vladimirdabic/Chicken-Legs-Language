@@ -8,8 +8,7 @@ CLL plans to be:
 - [x] Statically typed (Type checking is really basic)
 - [x] Self-hosted
 
-This project is only for fun and learning. I'm not aiming to create a great language, just one that works.
-
+This project is only for fun and learning. I'm not aiming to create a great language, just one that works.\
 Initially Python was used as a bootstrap for the language. Now the language its fully self hosted.
 
 ## Examples
