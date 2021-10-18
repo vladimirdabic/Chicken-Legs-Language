@@ -1,0 +1,1150 @@
+%include "std.cll"
+%include "dynamic_list.cll"
+%include "hashtable.cll"
+%include "scanner.cll"
+%include "nodes.cll"
+
+
+struct parserdata {
+    Token* tokens;
+    dword pos;
+    HashTable typedefs;
+}
+
+proc cll_pr_error(byte* file_name, word row, word col, byte* message) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] %s\n", file_name, row, col, message);
+    exit(1);
+}
+
+proc cll_pr_peek(parserdata data) -> Token {
+    return data.tokens[data.pos];
+}
+
+proc cll_pr_available(parserdata data) -> byte {
+    return data.tokens[data.pos].type != TT_EOF;
+}
+
+proc cll_pr_previous(parserdata data) -> Token {
+    return data.tokens[data.pos - 1];
+}
+
+proc cll_pr_advance(parserdata data) -> Token {
+    Token token = data.tokens[data.pos];
+    data.pos = data.pos + 1;
+    return token;
+}
+
+proc cll_pr_check(parserdata data, byte type) -> byte {
+    return data.tokens[data.pos].type == type;
+}
+
+proc cll_pr_consume(parserdata data, byte expected_type, byte* error_msg) -> Token {
+    Token peek = cll_pr_peek(data);
+    if(peek.type == expected_type) return cll_pr_advance(data);
+
+    cll_pr_error(peek.file_name, peek.row, peek.col, error_msg);
+    return 0;
+}
+
+proc cll_pr_match1(parserdata data, byte token_type) -> byte {
+    if(cll_pr_peek(data).type == token_type) {
+        data.pos = data.pos + 1;
+        return true;
+    }
+
+    return false;
+}
+
+proc cll_pr_match(parserdata data, dword argc) -> byte {
+    // rbp + 48 = last parameter pushed
+    // 40 + (8 * argc) = first parameter
+    qword current_parameter = ((qword)%bp) + (40 + 8 * argc);
+    qword token_type;
+    while(argc > 0) {
+        token_type = *(qword*)current_parameter;
+
+        if(cll_pr_peek(data).type == token_type) {
+            data.pos = data.pos + 1;
+            return true;
+        }
+
+        current_parameter = current_parameter - 8;
+        argc = argc - 1;
+    }
+
+    return false;
+}
+
+proc cll_pr_match_type(parserdata data) -> Type {
+    push TT_BYTE;
+    push TT_WORD;
+    push TT_DWORD;
+    push TT_QWORD;
+    push TT_PTR;
+    
+    if(!cll_pr_match(data, 5)) {
+        // pop argc vars
+        drop; drop; drop; drop; drop;
+        
+        Token peek = cll_pr_peek(data);
+
+        if(peek.type != TT_IDENTIFIER) {
+            return NULL;
+        }
+
+        Type final_type = (Type)ht_get(data.typedefs, peek.ptr_value);
+        
+        if(final_type == NULL) {
+            return NULL;
+        }
+
+        cll_pr_advance(data);
+
+        while(cll_pr_match1(data, TT_STAR)) {
+            Type new_type res;
+            new_type.id = TYPE_PTR;
+            new_type.is_base_type = false;
+            new_type.base_type = final_type;
+            final_type = new_type;
+        }
+
+        return final_type;
+    }
+
+    // pop argc vars
+    drop; drop; drop; drop; drop;
+    byte type_id;
+    Token prev = cll_pr_previous(data);
+
+    if(prev.type == TT_BYTE) { type_id = TYPE_BYTE; }
+    else if(prev.type == TT_WORD) { type_id = TYPE_WORD; }
+    else if(prev.type == TT_DWORD) { type_id = TYPE_DWORD; }
+    else if(prev.type == TT_QWORD) { type_id = TYPE_QWORD; }
+    else if(prev.type == TT_PTR) { type_id = TYPE_PTR; }
+
+    Type final_type res;
+    final_type.id = type_id;
+    final_type.is_base_type = true;
+
+    while(cll_pr_match1(data, TT_STAR)) {
+        Type new_type res;
+        new_type.id = TYPE_PTR;
+        new_type.is_base_type = false;
+        new_type.base_type = final_type;
+        final_type = new_type;
+    }
+
+    return final_type;
+}
+
+proc cll_pr_consume_type(parserdata data, byte* error_msg) -> Type {
+    push TT_BYTE;
+    push TT_WORD;
+    push TT_DWORD;
+    push TT_QWORD;
+    push TT_PTR;
+    
+    if(!cll_pr_match(data, 5)) {
+        // pop argc vars
+        drop; drop; drop; drop; drop;
+        
+        Token peek = cll_pr_peek(data);
+
+        if(peek.type != TT_IDENTIFIER) {
+            cll_pr_error(peek.file_name, peek.row, peek.col, error_msg);
+            return NULL;
+        }
+
+        Type final_type = (Type)ht_get(data.typedefs, peek.ptr_value);
+        
+        if(final_type == NULL) {
+            cll_pr_error(peek.file_name, peek.row, peek.col, error_msg);
+            return NULL;
+        }
+
+        cll_pr_advance(data);
+
+        while(cll_pr_match1(data, TT_STAR)) {
+            Type new_type res;
+            new_type.id = TYPE_PTR;
+            new_type.is_base_type = false;
+            new_type.base_type = final_type;
+            final_type = new_type;
+        }
+
+        return final_type;
+    }
+
+    // pop argc vars
+    drop; drop; drop; drop; drop;
+    byte type_id;
+    Token prev = cll_pr_previous(data);
+
+    if(prev.type == TT_BYTE) { type_id = TYPE_BYTE; }
+    else if(prev.type == TT_WORD) { type_id = TYPE_WORD; }
+    else if(prev.type == TT_DWORD) { type_id = TYPE_DWORD; }
+    else if(prev.type == TT_QWORD) { type_id = TYPE_QWORD; }
+    else if(prev.type == TT_PTR) { type_id = TYPE_PTR; }
+
+    Type final_type res;
+    final_type.id = type_id;
+    final_type.is_base_type = true;
+
+    while(cll_pr_match1(data, TT_STAR)) {
+        Type new_type res;
+        new_type.id = TYPE_PTR;
+        new_type.is_base_type = false;
+        new_type.base_type = final_type;
+        final_type = new_type;
+    }
+
+    return final_type;
+}
+
+proc cll_pr_parse_decl(parserdata data) -> Node;
+proc cll_pr_parse_stmt(parserdata data) -> Node;
+proc cll_pr_parse_block(parserdata data) -> DynamicList;
+
+proc cll_pr_parse_expr(parserdata data) -> Node;
+proc cll_pr_parse_assign(parserdata data) -> Node;
+proc cll_pr_parse_bitwise(parserdata data) -> Node;
+proc cll_pr_parse_or_and(parserdata data) -> Node;
+proc cll_pr_parse_equals(parserdata data) -> Node;
+proc cll_pr_parse_greater(parserdata data) -> Node;
+proc cll_pr_parse_greater_eq(parserdata data) -> Node;
+proc cll_pr_parse_term(parserdata data) -> Node;
+proc cll_pr_parse_factor(parserdata data) -> Node;
+proc cll_pr_parse_call(parserdata data) -> Node;
+proc cll_pr_parse_primary(parserdata data) -> Node;
+
+proc cll_pr_parse(Token* tokens) -> DynamicList {
+    parserdata data res;
+    data.pos = 0;
+    data.tokens = tokens;
+    data.typedefs = ht_create();
+
+    DynamicList declarations = cll_list_create();
+    Node node;
+
+    while(cll_pr_available(data)) {
+        node = cll_pr_parse_decl(data);
+        if(node) { cll_list_append(declarations, (qword)node); }
+    }
+
+    return declarations;
+}
+
+proc cll_pr_parse_decl(parserdata data) -> Node {
+    if(cll_pr_match1(data, TT_EXTERN)) {
+        // extern proc
+        if(cll_pr_match1(data, TT_PROC)) {
+            byte is_stdcall = cll_pr_match1(data, TT_STDCALL);
+            Token extern_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected extern proc name");
+            DynamicList args = cll_list_create();
+            byte varargs = false;
+
+            if(cll_pr_match1(data, TT_OPEN_PAREN)) {
+                if(!cll_pr_check(data, TT_CLOSE_PAREN)) {
+                    while(true) {
+                        if(cll_pr_match1(data, TT_VARARGS)) {
+                            varargs = true;
+                            break;
+                        }
+
+                        Type arg_type = cll_pr_consume_type(data, "Expected function parameter type");
+                        Token arg_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected function parameter name");
+
+                        NamedTypeArg arg res;
+                        arg.type = arg_type;
+                        arg.name = arg_name.ptr_value;
+
+
+                        cll_list_append(args, (qword)arg);
+                        if(!cll_pr_match1(data, TT_COMMA)) break;
+                    }
+                }
+
+                cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after function parameters");
+            }
+
+            Type return_type = (Type)NULL;
+            if(cll_pr_match1(data, TT_POINTER_ARROW)) {
+                return_type = cll_pr_consume_type(data, "Expected proc return type");
+            } else {
+                return_type = (Type)malloc(sizeof(Type));
+                return_type.id = TYPE_NONE;
+                return_type.is_base_type = true;
+            }
+
+            cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after extern proc definition");
+            
+            NodeProgramExternFunction node res;
+            node.node_type = NT_PROGRAM_EXTERN_FUNC;
+            node.return_type = return_type;
+            node.name = extern_name.ptr_value;
+            node.is_stdcall = is_stdcall;
+            node.args = args;
+            node.varargs = varargs;
+            node.file_name = extern_name.file_name;
+            node.row = extern_name.row;
+            node.col = extern_name.col;
+
+            // cll_free_list(args);
+            return (Node)node;
+        }
+
+        // extern var
+        Type extern_type = cll_pr_consume_type(data, "Expected extern variable type");
+        Token extern_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected extern variable name");
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after extern variable declaration");
+
+        NodeProgramExternVariable node res;
+        node.node_type = NT_PROGRAM_EXTERN_VAR;
+        node.name = extern_name.ptr_value;
+        node.type = extern_type;
+        node.file_name = extern_name.file_name;
+        node.row = extern_name.row;
+        node.col = extern_name.col;
+
+        return (Node)node;
+    }
+
+    byte is_global = cll_pr_match1(data, TT_GLOBAL);
+
+    if(cll_pr_match1(data, TT_PROC)) {
+        byte is_stdcall = cll_pr_match1(data, TT_STDCALL);
+        Token proc_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected proc name");
+        DynamicList args = cll_list_create();
+        byte varargs = false;
+
+        if(cll_pr_match1(data, TT_OPEN_PAREN)) {
+            if(!cll_pr_check(data, TT_CLOSE_PAREN)) {
+                while(true) {
+                    if(cll_pr_match1(data, TT_VARARGS)) {
+                        varargs = true;
+                        break;
+                    }
+
+                    Type arg_type = cll_pr_consume_type(data, "Expected proc parameter type");
+                    Token arg_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected proc parameter name");
+
+                    NamedTypeArg arg res;
+                    arg.type = arg_type;
+                    arg.name = arg_name.ptr_value;
+
+
+                    cll_list_append(args, (qword)arg);
+                    if(!cll_pr_match1(data, TT_COMMA)) break;
+                }
+            }
+
+            cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after proc parameters");
+        }
+
+        Type return_type = (Type)NULL;
+        if(cll_pr_match1(data, TT_POINTER_ARROW)) {
+            return_type = cll_pr_consume_type(data, "Expected proc return type");
+        } else {
+            return_type = (Type)malloc(sizeof(Type));
+            return_type.id = TYPE_NONE;
+            return_type.is_base_type = true;
+        }
+
+        NodeProgramFunction node res;
+        node.node_type = NT_PROGRAM_FUNCTION;
+        node.name = proc_name.ptr_value;
+        node.return_type = return_type;
+        node.is_stdcall = is_stdcall;
+        node.args = args;
+        node.is_global = is_global;
+        node.file_name = proc_name.file_name;
+        node.varargs = varargs;
+        node.forward = false;
+        node.row = proc_name.row;
+        node.col = proc_name.col;
+
+        if(cll_pr_match1(data, TT_SEMICOLON)) {
+            node.forward = true;
+            return (Node)node;
+        }
+
+        cll_pr_consume(data, TT_OPEN_BRACE, "Expected '{' for proc body");
+        DynamicList body = cll_pr_parse_block(data);
+        node.body = body;
+
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_STRUCT)) {
+        Token name = cll_pr_consume(data, TT_IDENTIFIER, "Expected struct name");
+
+        if(cll_pr_match1(data, TT_SEMICOLON)) {
+            StructType stype res;
+            stype.id = TYPE_STRUCT;
+            stype.is_base_type = true;
+            stype.struct_name = name.ptr_value;
+            stype.declared = false;
+            stype.file_name = name.file_name;
+            stype.row = name.row;
+            stype.col = name.col;
+
+            ht_set(data.typedefs, name.ptr_value, (qword)stype);
+            return (Node)NULL;
+        }
+
+        cll_pr_consume(data, TT_OPEN_BRACE, "Expected struct body");
+        DynamicList body = cll_list_create();
+
+        while((!cll_pr_check(data, TT_CLOSE_BRACE)) && cll_pr_available(data)) {
+            Type field_type = cll_pr_consume_type(data, "Expected struct field type");
+            Token field_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected struct field name");
+            cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after struct field");
+
+            NamedTypeArg sfield res;
+            sfield.name = field_name.ptr_value;
+            sfield.type = field_type;
+
+            cll_list_append(body, (qword)sfield);
+        }
+
+        cll_pr_consume(data, TT_CLOSE_BRACE, "Expected '}' after struct body");
+
+        StructType stype res;
+        stype.id = TYPE_STRUCT;
+        stype.is_base_type = true;
+        stype.struct_name = name.ptr_value;
+        stype.declared = true;
+        stype.file_name = name.file_name;
+        stype.row = name.row;
+        stype.col = name.col;
+
+        ht_set(data.typedefs, name.ptr_value, stype);
+
+        NodeProgramStruct program_struct res;
+        program_struct.node_type = NT_PROGRAM_STRUCT;
+        program_struct.name = name.ptr_value;
+        program_struct.fields = body;
+        program_struct.file_name = name.file_name;
+        program_struct.row = name.row;
+        program_struct.col = name.col;
+        
+        return (Node)program_struct;
+    }
+
+    Type var_type = cll_pr_consume_type(data, "Expected variable type");
+    Token var_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected variable name");
+    Node var_value = (Node)NULL;
+
+    if(cll_pr_match1(data, TT_EQUALS)) {
+        var_value = cll_pr_parse_expr(data);
+    }
+
+    cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after program variable declaration");
+
+    NodeProgramVariable node res;
+    node.node_type = NT_PROGRAM_VARIABLE;
+    node.name = var_name.ptr_value;
+    node.type = var_type;
+    node.value = var_value;
+    node.is_global = is_global;
+    node.file_name = var_name.file_name;
+    node.row = var_name.row;
+    node.col = var_name.col;
+
+    return (Node)node;
+}
+
+proc cll_pr_parse_block(parserdata data) -> DynamicList {
+    DynamicList statements = cll_list_create();
+
+    while(!cll_pr_check(data, TT_CLOSE_BRACE)) {
+        cll_list_append(statements, (qword)cll_pr_parse_stmt(data));
+    }
+
+    cll_pr_consume(data, TT_CLOSE_BRACE, "Expected '}' after code block");
+    return statements;
+}
+
+proc cll_pr_parse_stmt(parserdata data) -> Node {
+    if(cll_pr_match1(data, TT_IF)) {
+        cll_pr_consume(data, TT_OPEN_PAREN, "Expected '(' after if keyword");
+        Node expr = cll_pr_parse_expr(data);
+        cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after if expression");
+        Node body = cll_pr_parse_stmt(data);
+        Node else_body = (Node)NULL;
+
+        if(cll_pr_match1(data, TT_ELSE)) {
+            else_body = cll_pr_parse_stmt(data);
+        }
+
+        NodeIfStmt ifstmt res;
+        ifstmt.node_type = NT_IF_STMT;
+        ifstmt.value = expr;
+        ifstmt.body = body;
+        ifstmt.else_body = else_body;
+
+        return (Node)ifstmt;
+    }
+
+    if(cll_pr_match1(data, TT_WHILE)) {
+        cll_pr_consume(data, TT_OPEN_PAREN, "Expected '(' after while keyword");
+        Node expr = cll_pr_parse_expr(data);
+        cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after while expression");
+        Node body = cll_pr_parse_stmt(data);
+
+        NodeWhileStmt whilestmt res;
+        whilestmt.node_type = NT_WHILE_STMT;
+        whilestmt.value = expr;
+        whilestmt.body = body;
+
+        return (Node)whilestmt;
+    }
+
+    if(cll_pr_match1(data, TT_RETURN)) {
+        Token prev = cll_pr_previous(data);
+        Node value;
+
+        if(cll_pr_check(data, TT_SEMICOLON)) {
+            value = (Node)NULL;
+        } else {
+            value = cll_pr_parse_expr(data);
+        }
+
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after return statement");
+
+        NodeReturn retnode res;
+        retnode.node_type = NT_RETURN;
+        retnode.value = value;
+        retnode.file_name = prev.file_name;
+        retnode.row = prev.row;
+        retnode.col = prev.col;
+
+        return (Node)retnode;
+    }
+
+    if(cll_pr_match1(data, TT_BREAK)) {
+        Token prev = cll_pr_previous(data);
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after break");
+
+        NodeBreak brknode res;
+        brknode.node_type = NT_BREAK;
+        brknode.file_name = prev.file_name;
+        brknode.row = prev.row;
+        brknode.col = prev.col;
+
+        return (Node)brknode;
+    }
+
+    if(cll_pr_match1(data, TT_PUSH)) {
+        Node value = cll_pr_parse_expr(data);
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' push statement");
+
+        NodePush pushexpr res;
+        pushexpr.node_type = NT_PUSH;
+        pushexpr.value = value;
+
+        return (Node)pushexpr;
+    }
+
+    if(cll_pr_match1(data, TT_POP)) {
+        Token prev = cll_pr_previous(data);
+
+        Token variable = (Token)NULL;
+        byte* name = NULL;
+        if(cll_pr_match1(data, TT_IDENTIFIER)) {
+            variable = cll_pr_previous(data);
+            name = variable.ptr_value;
+        }
+
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' pop statement");
+
+        NodePop popexpr res;
+        popexpr.node_type = NT_POP;
+        popexpr.name = name;
+        popexpr.file_name = prev.file_name;
+        popexpr.row = prev.row;
+        popexpr.col = prev.col;
+
+        return (Node)popexpr;
+    }
+
+
+    push TT_DUP;
+    push TT_SWAP;
+    push TT_OVER;
+    push TT_SUB;
+    push TT_ADD;
+    push TT_MUL;
+    push TT_DIVMOD;
+    push TT_RET;
+    if(cll_pr_match(data, 8)) {
+        drop; drop; drop; drop; drop; drop; drop; drop;
+    
+        Token prev = cll_pr_previous(data);
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';'");
+
+        NodeSimpleStackOperation stackop res;
+        stackop.node_type = NT_SIMPLE_STACK_OP;
+        stackop.operation = prev.type;
+        stackop.file_name = prev.file_name;
+        stackop.row = prev.row;
+        stackop.col = prev.col;
+
+        return (Node)stackop;
+    }
+    drop; drop; drop; drop; drop; drop; drop; drop;
+
+
+    if(cll_pr_match1(data, TT_OPEN_BRACE)) {
+        DynamicList body = cll_pr_parse_block(data);
+
+        NodeCompoundStmt node res;
+        node.node_type = NT_COMPOUND_STMT;
+        node.body = body;
+
+        return (Node)node;
+    }
+
+    Type matched;
+    if(matched = cll_pr_match_type(data)) {
+        Token var_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected variable name");
+
+        // todo struct check
+        if(matched.id == TYPE_STRUCT) {
+            if(cll_pr_match1(data, TT_RES)) {
+                Token prev = cll_pr_previous(data);
+
+                NodeSizeofType n1 res;
+                n1.node_type = NT_SIZEOF_TYPE;
+                n1.type = matched;
+
+                DynamicList margs = cll_list_create();
+                cll_list_append(margs, (qword)n1);
+
+                NodeCallFunction n2 res;
+                n2.node_type = NT_CALL_FUNC;
+                n2.name = "malloc";
+                n2.args = margs;
+                n2.file_name = prev.file_name;
+                n2.row = prev.row;
+                n2.col = prev.col;
+
+                NodeCast n3 res;
+                n3.node_type = NT_CAST;
+                n3.type = matched;
+                n3.value = (Node)n2;
+
+                cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after local variable declaration");
+
+                NodeLocalVariable node res;
+                node.node_type = NT_LOCAL_VARIABLE;
+                node.name = var_name.ptr_value;
+                node.type = matched;
+                node.value = (Node)n3;
+                node.file_name = var_name.file_name;
+                node.row = var_name.row;
+                node.col = var_name.col;
+
+                return (Node)node;
+            }
+        }
+
+        Node var_value;
+        if(cll_pr_match1(data, TT_EQUALS))
+            var_value = cll_pr_parse_expr(data);
+        else
+            var_value = (Node)NULL;
+
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after local variable declaration");
+
+        NodeLocalVariable node res;
+        node.node_type = NT_LOCAL_VARIABLE;
+        node.name = var_name.ptr_value;
+        node.type = matched;
+        node.value = var_value;
+        node.file_name = var_name.file_name;
+        node.row = var_name.row;
+        node.col = var_name.col;
+
+        return (Node)node;
+    }
+
+    Node expr = cll_pr_parse_expr(data);
+    cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after expression statement");
+
+    NodeExprStmt exprstmt res;
+    exprstmt.node_type = NT_EXPR_STMT;
+    exprstmt.expr = (Node)expr;
+
+    return (Node)exprstmt;
+}
+
+proc cll_pr_parse_expr(parserdata data) -> Node {
+    return cll_pr_parse_assign(data);
+}
+
+proc cll_pr_parse_assign(parserdata data) -> Node {
+    Node left = cll_pr_parse_bitwise(data);
+
+    if(cll_pr_match1(data, TT_EQUALS)) {
+        Token eq = cll_pr_previous(data);
+        if(left.node_type == NT_VARIABLE) {
+            Node value = cll_pr_parse_assign(data);
+            NodeVariable var_node = (NodeVariable)left;
+
+            NodeAssignVariable node res;
+            node.node_type = NT_ASSIGN_VARIABLE;
+            node.name = var_node.name;
+            node.value = value;
+            node.file_name = var_node.file_name;
+            node.row = var_node.row;
+            node.col = var_node.col;
+
+            left = (Node)node;
+        } else if(left.node_type == NT_DEREF_PTR) {
+            Node value = cll_pr_parse_assign(data);
+            NodeDerefPtr deref = (NodeDerefPtr)left;
+
+            NodeSetAtPtr setatptr res;
+            setatptr.node_type = NT_SET_AT_PTR;
+            setatptr.pointer = deref.pointer;
+            setatptr.offset = deref.offset;
+            setatptr.value = value;
+            setatptr.file_name = deref.file_name;
+            setatptr.row = deref.row;
+            setatptr.col = deref.col;
+
+            left = (Node)setatptr;
+        } else if(left.node_type == NT_ACCESS_FIELD) {
+            Node value = cll_pr_parse_assign(data);
+            NodeAccessField accessfield = (NodeAccessField)left;
+
+            NodeWriteField writefield res;
+            writefield.node_type = NT_WRITE_FIELD;
+            writefield.struct_pointer = accessfield.struct_pointer;
+            writefield.name = accessfield.name;
+            writefield.value = value;
+            writefield.file_name = accessfield.file_name;
+            writefield.row = accessfield.row;
+            writefield.col = accessfield.col;
+
+            left = (Node)writefield;
+        } else {
+            cll_pr_error(eq.file_name, eq.row, eq.col, "Invalid assignment target");
+        }
+    }
+
+    return left;
+}
+
+proc cll_pr_parse_bitwise(parserdata data) -> Node {
+    Node left = cll_pr_parse_or_and(data);
+
+    push TT_ARROW_UP;
+    push TT_PIPE;
+    push TT_AND;
+    while(cll_pr_match(data, 3)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_or_and(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_or_and(parserdata data) -> Node {
+    Node left = cll_pr_parse_equals(data);
+
+    push TT_DOUBLE_AND;
+    push TT_OR;
+    push TT_PRECENT;
+    while(cll_pr_match(data, 3)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_equals(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_equals(parserdata data) -> Node {
+    Node left = cll_pr_parse_greater(data);
+
+    push TT_DOUBLE_EQUALS;
+    push TT_NOT_EQUALS;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_greater(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_greater(parserdata data) -> Node {
+    Node left = cll_pr_parse_greater_eq(data);
+
+    push TT_GREATER;
+    push TT_LOWER;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_greater_eq(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_greater_eq(parserdata data) -> Node {
+    Node left = cll_pr_parse_term(data);
+
+    push TT_GREATER_EQUALS;
+    push TT_LOWER_EQUALS;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_term(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_term(parserdata data) -> Node {
+    Node left = cll_pr_parse_factor(data);
+
+    push TT_PLUS;
+    push TT_MINUS;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_factor(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_factor(parserdata data) -> Node {
+    Node left = cll_pr_parse_call(data);
+
+    push TT_STAR;
+    push TT_SLASH;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_call(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_call(parserdata data) -> Node {
+    Node left = cll_pr_parse_primary(data);
+
+    while(true) {
+        if(cll_pr_match1(data, TT_OPEN_PAREN)) {
+            Token prev = cll_pr_previous(data);
+
+            if(left.node_type != NT_VARIABLE) {
+                cll_pr_error(prev.file_name, prev.row, prev.col, "Invalid call target (callee), must be a variable or function");
+            }
+
+            DynamicList args = cll_list_create();
+
+            if(!cll_pr_check(data, TT_CLOSE_PAREN)) {
+                while(true) {
+                    cll_list_append(args, (qword)cll_pr_parse_expr(data));
+                    if(!cll_pr_match1(data, TT_COMMA)) break;
+                }
+            }
+
+            cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after function call arguments");
+            
+            NodeCallFunction callf res;
+            callf.node_type = NT_CALL_FUNC;
+            callf.name = ((NodeVariable)left).name;
+            callf.args = args;
+            callf.file_name = prev.file_name;
+            callf.row = prev.row;
+            callf.col = prev.col;
+
+            left = (Node)callf;
+        } else if(cll_pr_match1(data, TT_OPEN_SQUARE)) {
+            Token prev = cll_pr_previous(data);
+            Node offset = cll_pr_parse_expr(data);
+            cll_pr_consume(data, TT_CLOSE_SQUARE, "Expected ']' after pointer defererence offset");
+            
+            NodeDerefPtr deref res;
+            deref.node_type = NT_DEREF_PTR;
+            deref.pointer = left;
+            deref.offset = offset;
+            deref.file_name = prev.file_name;
+            deref.row = prev.row;
+            deref.col = prev.col;
+
+            left = (Node)deref;
+        } else if(cll_pr_match1(data, TT_DOT)) {
+            Token field_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected field name after '.'");
+            
+            NodeAccessField accessfield res;
+            accessfield.node_type = NT_ACCESS_FIELD;
+            accessfield.struct_pointer = left;
+            accessfield.name = field_name.ptr_value;
+            accessfield.file_name = field_name.file_name;
+            accessfield.row = field_name.row;
+            accessfield.col = field_name.col;
+
+            left = (Node)accessfield;
+        } else {
+            break;
+        }
+    }
+
+    return left;
+}
+
+proc cll_pr_parse_primary(parserdata data) -> Node {
+    Token prev;
+
+    if(cll_pr_match1(data, TT_NUMBER)) {
+        NodeNumberLiteral node res;
+        node.node_type = NT_NUMBER;
+        node.value = cll_pr_previous(data).num_value;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_TRUE)) {
+        NodeNumberLiteral node res;
+        node.node_type = NT_NUMBER;
+        node.value = 1;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_FALSE)) {
+        NodeNumberLiteral node res;
+        node.node_type = NT_NUMBER;
+        node.value = 0;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_STRING)) {
+        prev = cll_pr_previous(data);
+        NodeStringLiteral node res;
+        node.node_type = NT_STRING;
+        node.value = prev.ptr_value;
+        node.file_name = prev.file_name;
+        node.row = prev.row;
+        node.col = prev.col;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_HERE)) {
+        prev = cll_pr_previous(data);
+        NodeStringLiteral node res;
+        node.node_type = NT_STRING;
+
+        byte* loc = malloc(strlen(prev.file_name) + 10);
+        sprintf(loc, "%s:%d:%d", prev.file_name, prev.row, prev.col);
+
+        node.value = loc;
+        node.file_name = prev.file_name;
+        node.row = prev.row;
+        node.col = prev.col;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_IDENTIFIER)) {
+        prev = cll_pr_previous(data);
+        NodeVariable node res;
+        node.node_type = NT_VARIABLE;
+        node.name = prev.ptr_value;
+        node.file_name = prev.file_name;
+        node.row = prev.row;
+        node.col = prev.col;
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_OPEN_PAREN)) {
+        Type cast_type;
+        if(cast_type = cll_pr_match_type(data)) {
+            cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after cast expression");
+            Node cast_expr = cll_pr_parse_expr(data);
+
+            NodeCast cast_node res;
+            cast_node.node_type = NT_CAST;
+            cast_node.type = cast_type;
+            cast_node.value = cast_expr;
+
+            return (Node)cast_node;
+        }
+
+        Node expr = cll_pr_parse_expr(data);
+        cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after group expression");
+        return expr;
+    }
+
+    if(cll_pr_match1(data, TT_AND)) {
+        Token name = cll_pr_consume(data, TT_IDENTIFIER, "Expected variable name");
+
+        NodeAddrOf node res;
+        node.node_type = NT_ADDR_OF;
+        node.name = name.ptr_value;
+        node.file_name = name.file_name;
+        node.row = name.row;
+        node.col = name.col;
+
+        return (Node)node;
+    }
+
+    if(cll_pr_match1(data, TT_RES)) {
+        prev = cll_pr_previous(data);
+        Type res_type = cll_pr_consume_type(data, "Expected reserve array type");
+
+        if(cll_pr_match1(data, TT_OPEN_SQUARE)) {
+            DynamicList values = cll_list_create();
+
+            if(!cll_pr_check(data, TT_CLOSE_SQUARE)) {
+                while(true) {
+                    cll_list_append(values, (qword)cll_pr_parse_expr(data));
+                    if(!cll_pr_match1(data, TT_COMMA)) break;
+                }
+            }
+
+            cll_pr_consume(data, TT_CLOSE_SQUARE, "Expected ']' after reserve array initial values");
+            
+            NodeReserveInitialized res_init res;
+            res_init.node_type = NT_RESERVE_INITIALIZED;
+            res_init.type = res_type;
+            res_init.data = values;
+            res_init.file_name = prev.file_name;
+            res_init.row = prev.row;
+            res_init.col = prev.col;
+
+            return (Node)res_init;
+        }
+
+        Token res_size = cll_pr_consume(data, TT_NUMBER, "Expected reserve array size");
+
+        NodeReserveUninitialized res_uninit res;
+        res_uninit.node_type = NT_RESERVE_UNINITIALIZED;
+        res_uninit.type = res_type;
+        res_uninit.size = res_size.num_value;
+        res_uninit.file_name = prev.file_name;
+        res_uninit.row = prev.row;
+        res_uninit.col = prev.col;
+
+        return (Node)res_uninit;
+    }
+
+    if(cll_pr_match1(data, TT_STAR)) {
+        prev = cll_pr_previous(data);
+        Node value = cll_pr_parse_bitwise(data);
+
+        NodeDerefPtr deref res;
+        deref.node_type = NT_DEREF_PTR;
+        deref.pointer = value;
+        deref.offset = (Node)NULL;
+        deref.file_name = prev.file_name;
+        deref.row = prev.row;
+        deref.col = prev.col;
+
+        return (Node)deref;
+    }
+
+    if(cll_pr_match1(data, TT_BANG)) {
+        Node value = cll_pr_parse_bitwise(data);
+
+        NodeNot not_node res;
+        not_node.node_type = NT_NOT;
+        not_node.value = value;
+
+        return (Node)not_node;
+    }
+
+    if(cll_pr_match1(data, TT_STACK_PTR)) {
+        NodePushRegister pushreg res;
+
+        pushreg.node_type = NT_PUSH_REGISTER;
+        pushreg.register = "rsp";
+
+        return (Node)pushreg;
+    }
+
+    if(cll_pr_match1(data, TT_BASE_PTR)) {
+        NodePushRegister pushreg res;
+
+        pushreg.node_type = NT_PUSH_REGISTER;
+        pushreg.register = "rbp";
+        
+        return (Node)pushreg;
+    }
+
+    if(cll_pr_match1(data, TT_SIZEOF)) {
+        cll_pr_consume(data, TT_OPEN_PAREN, "Expected '(' after sizeof keyword");
+
+        Type stype;
+        if(stype = cll_pr_match_type(data)) {
+            cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after sizeof expression");
+
+            NodeSizeofType szType res;
+            szType.node_type = NT_SIZEOF_TYPE;
+            szType.type = stype;
+
+            return (Node)szType;
+        }
+
+        Node value = cll_pr_parse_expr(data);
+        cll_pr_consume(data, TT_CLOSE_PAREN, "Expected ')' after sizeof expression");
+
+        NodeSizeof szof res;
+        szof.node_type = NT_SIZEOF;
+        szof.value = value;
+
+        return (Node)szof;
+    }
+
+    Token peek = cll_pr_peek(data);
+    cll_pr_error(peek.file_name, peek.row, peek.col, "Expected expression");
+    return 0;
+}

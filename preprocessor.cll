@@ -1,0 +1,236 @@
+%include "std.cll"
+%include "file.cll"
+%include "string.cll"
+%include "dynamic_list.cll"
+%include "hashtable.cll"
+%include "scanner.cll"
+
+
+struct preproc {
+    DynamicList tokens;
+    HashTable macros;
+    HashTable included;
+    qword pos;
+}
+
+
+
+proc cll_pp_error(byte* file_name, word row, word col, byte* message) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] %s\n", file_name, row, col, message);
+    exit(1);
+}
+
+proc cll_pp_file_not_found(byte* file_name, word row, word col, byte* file_include) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] File '%s' not found\n", file_name, row, col, file_include);
+    exit(1);
+}
+
+proc cll_pp_peek(preproc data) -> Token {
+    return (Token)data.tokens.data[data.pos];
+}
+
+proc cll_pp_check(preproc data, byte token_type) -> byte {
+    return cll_pp_peek(data).type == token_type;
+}
+
+proc cll_pp_advance(preproc data) -> Token {
+    Token token = cll_pp_peek(data);
+    data.pos = data.pos + 1;
+    return token;
+}
+
+proc cll_pp_match(preproc data, byte token_type) -> byte {
+    if(cll_pp_check(data, token_type)) {
+        data.pos = data.pos + 1;
+        return true;
+    }
+
+    return false;
+}
+
+proc cll_pp_consume(preproc data, byte expected_type, byte* err_msg) -> Token {
+    Token peek = cll_pp_peek(data);
+    if(peek.type == expected_type) return cll_pp_advance(data);
+
+    cll_pp_error(peek.file_name, peek.row, peek.col, err_msg);
+    return 0;
+}
+
+proc cll_pp_available(preproc data) -> byte {
+    return cll_pp_peek(data).type != TT_EOF;
+}
+
+
+struct MacroData {
+    qword* tokens;
+    dword start;
+    dword num_tokens;
+}
+
+struct PreprocResult {
+    DynamicList tokens;
+    HashTable macros;
+    HashTable included;
+}
+
+
+proc cll_pp_preprocess(preproc data, DynamicList tokens, byte** include_dirs, dword include_n, byte setup) -> PreprocResult {
+    data.tokens = tokens;
+    data.pos = 0;
+    if(setup) {
+        data.macros = ht_create();
+        data.included = ht_create();
+    }
+    DynamicList new_tokens = cll_list_create();
+    MacroData macro_tokens;
+    dword start;
+    dword i;
+
+    Token token;
+    while(cll_pp_available(data)) {
+        token = cll_pp_advance(data);
+
+        if(token.type == TT_DEFINE) {
+            Token macro_name = cll_pp_consume(data, TT_IDENTIFIER, "Expected macro name");
+
+            macro_tokens = (MacroData)malloc(sizeof(MacroData));
+            macro_tokens.tokens = tokens.data;
+
+            if(cll_pp_match(data, TT_OPEN_SQUARE)) {
+                start = data.pos;
+                qword square_opened = 1;
+                while(true) {
+                    if(cll_pp_check(data, TT_CLOSE_SQUARE)) {
+                        square_opened = square_opened - 1;
+                        if(square_opened == 0) break;
+                    }
+
+                    if(cll_pp_available(data)) {
+                        Token tok = cll_pp_advance(data);
+                        if(tok.type == TT_OPEN_SQUARE) square_opened = square_opened + 1;
+                    } else {
+                        cll_pp_error(macro_name.file_name, macro_name.row, macro_name.col, "Expected ']' after macro definition (Reached EOF)");
+                    }
+                }
+                macro_tokens.start = start;
+                macro_tokens.num_tokens = data.pos - start;
+                cll_pp_consume(data, TT_CLOSE_SQUARE, "Expected ']' after macro definition");
+            } else {
+                if(!cll_pp_available(data)) {
+                    cll_pp_error(macro_name.file_name, macro_name.row, macro_name.col, "Expected macro value");
+                }
+
+                macro_tokens.start = data.pos;
+                macro_tokens.num_tokens = 1;
+                cll_pp_advance(data);
+            }
+
+            preproc preprocessor res;
+            preprocessor.macros = data.macros;
+            preprocessor.included = data.included;
+
+            DynamicList macro_tokens_eof = cll_list_create();
+            
+            i = 0;
+            while(i < macro_tokens.num_tokens) {
+                cll_list_append(macro_tokens_eof, macro_tokens.tokens[start + i]);
+                i = i + 1;
+            }
+
+            Token eof_token res;
+            eof_token.type = TT_EOF;
+
+            Token last = macro_tokens.tokens[macro_tokens.start + macro_tokens.num_tokens - 1];
+            eof_token.file_name = last.file_name;
+            eof_token.row = last.row;
+            eof_token.col = last.col;
+
+            cll_list_append(macro_tokens_eof, eof_token);
+
+            PreprocResult preproc_result = cll_pp_preprocess(preprocessor, macro_tokens_eof, include_dirs, include_n, false);
+
+            cll_list_pop(preproc_result.tokens);
+            ht_set(data.macros, macro_name.ptr_value, (qword)preproc_result.tokens);
+            
+            // cll_free_list(macro_tokens_eof);
+        } else if(token.type == TT_INCLUDE) {
+            Token file = cll_pp_consume(data, TT_STRING, "Expected file name");
+            ScannerData scanner res;
+            preproc preprocessor res;
+            preprocessor.macros = data.macros;
+            preprocessor.included = data.included;
+
+            byte* file_name = file.ptr_value;
+            byte* file_content = NULL;
+            byte* combined_file_name = NULL;
+
+            if(!ht_get(data.included, file_name)) {
+                i = 0;
+                while(i < include_n) {
+                    if(file_content == NULL) {
+                        combined_file_name = malloc(strlen(include_dirs[i]) + strlen(file_name) + 1);
+                        sprintf(combined_file_name, "%s%s", include_dirs[i], file_name);
+                        file_content = fread_text(combined_file_name);
+                        // printf("%s %d %d\n", combined_file_name, i, include_n);
+                    }
+                    i = i + 1;
+                }
+
+                if(file_content == NULL) {
+                    cll_pp_file_not_found(token.file_name, token.row, token.col, file_name);
+                }
+
+                ht_set(data.included, file_name, true);
+
+                cll_scan(scanner, file_content, file_name);
+                PreprocResult preproc_result = cll_pp_preprocess(preprocessor, scanner.tokens, include_dirs, include_n, false);
+                // expand
+                i = 0;
+                dword lend = preproc_result.tokens.current_pos - 1;
+                while(i < lend) {
+                    cll_list_append(new_tokens, preproc_result.tokens.data[i]);
+                    i = i + 1;
+                }
+
+                // copy macro defs
+                //HashTableIterator it = ht_iterator(preproc_result.macros);
+                //while(ht_next(it)) {
+                //    ht_set(data.macros, it.key, it.value);
+                //}
+
+                // it = ht_iterator(preproc_result.included);
+                // while(ht_next(it)) {
+                //    ht_set(data.included, it.key, it.value);
+                // }
+                cll_free_list(preproc_result.tokens);
+            }
+        } else if(token.type == TT_IDENTIFIER) {
+            qword macro_data = ht_get(data.macros, token.ptr_value);
+            if(macro_data == NULL) {
+                cll_list_append(new_tokens, (qword)token);
+            } else {
+                DynamicList unwrap_tokens = (DynamicList)macro_data;
+                i = 0;
+                while(i < unwrap_tokens.current_pos) {
+                    cll_list_append(new_tokens, unwrap_tokens.data[i]);
+                    i = i + 1;
+                }
+                free((ptr)token);
+            }
+        } else {
+            cll_list_append(new_tokens, (qword)token);
+        }
+    }
+
+    cll_list_append(new_tokens, tokens.data[tokens.current_pos-1]);
+    PreprocResult result res;
+    result.tokens = new_tokens;
+    result.macros = data.macros;
+    result.included = data.included;
+
+    cll_free_list(tokens);
+    // free((ptr)tokens);
+    free((ptr)data);
+    return result;
+}
+

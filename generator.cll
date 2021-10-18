@@ -1,0 +1,1830 @@
+%include "std.cll"
+%include "nodes.cll"
+%include "type_ids.cll"
+%include "hashtable.cll"
+%include "dynamic_list.cll"
+
+// register ids
+
+%define RAX [0]
+%define RBX [1]
+%define RCX [2]
+%define RDX [3]
+%define RDI [4]
+%define RSI [5]
+%define R8  [6]
+%define R9  [7]
+%define R10 [8]
+%define R11 [9]
+%define R12 [10]
+%define R13 [11]
+%define R14 [12]
+%define R15 [13]
+%define R16 [14]
+
+
+%define N_ARGUMENT_REGISTERS [4]
+byte* ARGUMENT_REGISTERS = res byte [RCX, RDX, R8, R9];
+
+
+proc cll_get_type_size(byte type) -> byte {
+    if(type == TYPE_BYTE) return 1;
+    if(type == TYPE_WORD) return 2;
+    if(type == TYPE_DWORD) return 4;
+    if(type == TYPE_QWORD) return 8;
+    if(type == TYPE_PTR) return 8;
+    if(type == TYPE_STRUCT) return 8;
+
+    // shouldn't be reachable
+    fprintf(stderr, "Unknown size for type of id %d\n", type);
+    exit(1);
+    return 0;
+}
+
+proc cll_type_asm_name(byte type) -> byte* {
+    if(type == TYPE_BYTE) return "byte";
+    if(type == TYPE_WORD) return "word";
+    if(type == TYPE_DWORD) return "dword";
+    if(type == TYPE_QWORD) return "qword";
+    if(type == TYPE_PTR) return "qword";
+    if(type == TYPE_STRUCT) return "qword";
+
+    // shouldn't be reachable
+    fprintf(stderr, "Unknown assembly name for type of id %d\n", type);
+    exit(1);
+    return 0;
+}
+
+proc cll_type_name(byte type) -> byte* {
+    if(type == TYPE_BYTE) return "byte";
+    if(type == TYPE_WORD) return "word";
+    if(type == TYPE_DWORD) return "dword";
+    if(type == TYPE_QWORD) return "qword";
+    if(type == TYPE_PTR) return "ptr";
+    if(type == TYPE_STRUCT) return "struct";
+
+    // shouldn't be reachable
+    fprintf(stderr, "Unknown type name for type of id %d\n", type);
+    exit(1);
+    return 0;
+}
+
+proc cll_type_asm_letter(byte type) -> byte {
+    if(type == TYPE_BYTE) return 'b';
+    if(type == TYPE_WORD) return 'w';
+    if(type == TYPE_DWORD) return 'd';
+    if(type == TYPE_QWORD) return 'q';
+    if(type == TYPE_PTR) return 'q';
+    if(type == TYPE_STRUCT) return 'q';
+
+    // shouldn't be reachable
+    fprintf(stderr, "Unknown assembly letter for type of id %d\n", type);
+    exit(1);
+    return 0;
+}
+
+proc cll_register_var(byte register_id, byte size) -> byte* {
+    if(register_id == RAX) {
+        if(size == 1) return "al";
+        if(size == 2) return "ax";
+        if(size == 4) return "eax";
+        if(size == 8) return "rax";
+    } else if(register_id == RBX) {
+        if(size == 1) return "bl";
+        if(size == 2) return "bx";
+        if(size == 4) return "ebx";
+        if(size == 8) return "rbx";
+    } else if(register_id == RCX) {
+        if(size == 1) return "cl";
+        if(size == 2) return "cx";
+        if(size == 4) return "ecx";
+        if(size == 8) return "rcx";
+    } else if(register_id == RDX) {
+        if(size == 1) return "dl";
+        if(size == 2) return "dx";
+        if(size == 4) return "edx";
+        if(size == 8) return "rdx";
+    } else if(register_id == RDI) {
+        if(size == 1) return "dil";
+        if(size == 2) return "di";
+        if(size == 4) return "edi";
+        if(size == 8) return "rdi";
+    } else if(register_id == RSI) {
+        if(size == 1) return "sil";
+        if(size == 2) return "si";
+        if(size == 4) return "esi";
+        if(size == 8) return "rsi";
+    } else if(register_id == R8) {
+        if(size == 1) return "r8b";
+        if(size == 2) return "r8w";
+        if(size == 4) return "r8d";
+        if(size == 8) return "r8";
+    } else if(register_id == R9) {
+        if(size == 1) return "r9b";
+        if(size == 2) return "r9w";
+        if(size == 4) return "r9d";
+        if(size == 8) return "r9";
+    } else if(register_id == R10) {
+        if(size == 1) return "r10b";
+        if(size == 2) return "r10w";
+        if(size == 4) return "r10d";
+        if(size == 8) return "r10";
+    } else if(register_id == R11) {
+        if(size == 1) return "r11b";
+        if(size == 2) return "r11w";
+        if(size == 4) return "r11d";
+        if(size == 8) return "r11";
+    } else if(register_id == R12) {
+        if(size == 1) return "r12b";
+        if(size == 2) return "r12w";
+        if(size == 4) return "r12d";
+        if(size == 8) return "r12";
+    } else if(register_id == R13) {
+        if(size == 1) return "r13b";
+        if(size == 2) return "r13w";
+        if(size == 4) return "r13d";
+        if(size == 8) return "r13";
+    } else if(register_id == R14) {
+        if(size == 1) return "r14b";
+        if(size == 2) return "r14w";
+        if(size == 4) return "r14d";
+        if(size == 8) return "r14";
+    } else if(register_id == R15) {
+        if(size == 1) return "r15b";
+        if(size == 2) return "r15w";
+        if(size == 4) return "r15d";
+        if(size == 8) return "r15";
+    } else if(register_id == R16) {
+        if(size == 1) return "r16b";
+        if(size == 2) return "r16w";
+        if(size == 4) return "r16d";
+        if(size == 8) return "r16";
+    }
+
+    fprintf(stderr, "Unknown register data: ID: %d, Size: %d\n", register_id, size);
+    exit(1);
+    return NULL;
+}
+
+struct StructField {
+    byte* name;
+    Type type;
+    dword size;
+    dword offset;
+}
+
+struct StructData {
+    HashTable fields;
+    word size;
+    byte largest_size;
+}
+
+struct FunctionData {
+    Type return_type;
+    DynamicList arguments;
+    byte is_extern;
+    byte is_stdcall;
+    byte varargs;
+    DynamicList body;
+}
+
+struct LocalData {
+    byte size;
+    Type type;
+    dword offset;
+}
+
+struct GlobalData {
+    byte size;
+    Type type;
+}
+
+// linked list
+struct LocalTable;
+struct LocalTable {
+    LocalTable parent;
+    HashTable data;
+}
+
+struct DataSeg {
+    byte* name;
+    byte type_id;
+    byte* value;
+    qword num_value;
+}
+
+struct BssSeg {
+    byte* name;
+    byte type_id;
+    qword count;
+}
+
+struct gendata {
+    qword current_id;
+    qword current_label;
+    
+    DynamicList data;
+    DynamicList bss;
+    DynamicList externs;
+
+    HashTable functions;
+    FunctionData cur_func;
+    byte* cur_func_name;
+
+    DynamicList cur_body;
+    LocalTable cur_locals;
+    
+    HashTable globals;
+    HashTable struct_data;
+
+    dword local_offset;
+    dword locals_size;
+    dword padding_left;
+
+    DynamicList break_stack;
+}
+
+
+proc cll_local_table(LocalTable parent) -> LocalTable {
+    LocalTable table res;
+    
+    table.data = ht_create();
+    table.parent = parent;
+    
+    return table;
+}
+
+proc cll_lt_get(LocalTable table, byte* key) -> LocalData {
+    qword data = ht_get(table.data, key);
+    if(data) {
+        return (LocalData)data;
+    }
+
+    if(table.parent != (LocalTable)NULL) {
+        return cll_lt_get(table.parent, key);
+    }
+
+    return (LocalData)NULL;
+}
+
+proc cll_lt_set(LocalTable table, byte* key, LocalData value) {
+    ht_set(table.data, key, (qword)value);
+}
+
+proc cll_lt_has(LocalTable table, byte* key) -> byte {
+    qword data = ht_get(table.data, key);
+    if(data) {
+        return true;
+    }
+
+    if(table.parent != (LocalTable)NULL) {
+        return cll_lt_has(table.parent, key);
+    }
+
+    return false;
+}
+
+proc cll_lt_any(LocalTable table) -> byte {
+    qword len = ht_length(table.data);
+    
+    if(len != 0) return true;
+    if(table.parent != (LocalTable)NULL) return cll_lt_any(table.parent);
+
+    return false;
+}
+
+proc cll_lt_destory(LocalTable table) {
+    if(table.parent) {
+        cll_lt_destory(table.parent);
+    }
+
+    // table.parent = (LocalTable)NULL;
+    ht_destroy(table.data);
+    free((ptr)table);
+}
+
+proc cll_gen_node(gendata gen, ptr stream, Node node);
+proc cll_gen_extern_var(gendata gen, ptr stream, NodeProgramExternVariable node);
+proc cll_gen_extern_func(gendata gen, ptr stream, NodeProgramExternFunction node);
+proc cll_gen_program_var(gendata gen, ptr stream, NodeProgramVariable node);
+proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node);
+proc cll_gen_local_var(gendata gen, ptr stream, NodeLocalVariable node);
+proc cll_gen_compound(gendata gen, ptr stream, NodeCompoundStmt node);
+proc cll_gen_assign_var(gendata gen, ptr stream, NodeAssignVariable node);
+proc cll_gen_number(gendata gen, ptr stream, NodeNumberLiteral node);
+proc cll_gen_string(gendata gen, ptr stream, NodeStringLiteral node);
+proc cll_gen_variable(gendata gen, ptr stream, NodeVariable node);
+proc cll_gen_binary_op(gendata gen, ptr stream, NodeBinaryOperation node);
+proc cll_gen_addr_of(gendata gen, ptr stream, NodeAddrOf node);
+proc cll_gen_res(gendata gen, ptr stream, NodeReserveUninitialized node);
+proc cll_gen_res_init(gendata gen, ptr stream, NodeReserveInitialized node);
+proc cll_gen_deref_ptr(gendata gen, ptr stream, NodeDerefPtr node);
+proc cll_gen_not(gendata gen, ptr stream, NodeNot node);
+proc cll_gen_push_register(gendata gen, ptr stream, NodePushRegister node);
+proc cll_gen_sizeof_type(gendata gen, ptr stream, NodeSizeofType node);
+proc cll_gen_sizeof(gendata gen, ptr stream, NodeSizeof node);
+proc cll_gen_program_struct(gendata gen, ptr stream, NodeProgramStruct node);
+proc cll_gen_cast(gendata gen, ptr stream, NodeCast node);
+proc cll_gen_call_function(gendata gen, ptr stream, NodeCallFunction node);
+proc cll_gen_set_at_ptr(gendata gen, ptr stream, NodeSetAtPtr node);
+proc cll_gen_access_field(gendata gen, ptr stream, NodeAccessField node);
+proc cll_gen_write_field(gendata gen, ptr stream, NodeWriteField node);
+proc cll_gen_if_stmt(gendata gen, ptr stream, NodeIfStmt node);
+proc cll_gen_while_stmt(gendata gen, ptr stream, NodeWhileStmt node);
+proc cll_gen_return(gendata gen, ptr stream, NodeReturn node);
+proc cll_gen_break(gendata gen, ptr stream, NodeBreak node);
+proc cll_gen_push(gendata gen, ptr stream, NodePush node);
+proc cll_gen_pop(gendata gen, ptr stream, NodePop node);
+proc cll_gen_stack_op(gendata gen, ptr stream, NodeSimpleStackOperation node);
+proc cll_resolve_type(gendata gen, Node node) -> Type;
+proc cll_type_name2(Type type) -> byte*;
+proc cll_ptr_base(Type type) -> Type;
+
+proc cll_generate_asm(DynamicList declarations, ptr file_name) {
+    gendata gen res;
+
+    gen.current_id = 0;
+    gen.current_label = 0;
+    gen.data = cll_list_create();
+    gen.bss = cll_list_create();
+    gen.externs = cll_list_create();
+    gen.functions = ht_create();
+    gen.cur_body = (DynamicList)NULL;
+    gen.globals = ht_create();
+    gen.struct_data = ht_create();
+    gen.break_stack = cll_list_create();
+    gen.cur_locals = (LocalTable)NULL;
+    gen.local_offset = 0;
+    gen.locals_size = 0;
+    gen.padding_left = 0;
+
+    FunctionData malloc_data res;
+    FunctionData free_data res;
+    
+    Type ptr_type res;
+    Type qword_type res;
+    Type none_type res;
+    ptr_type.id = TYPE_PTR;
+    ptr_type.is_base_type = true;
+    qword_type.id = TYPE_QWORD;
+    qword_type.is_base_type = true;
+    none_type.id = TYPE_NONE;
+    none_type.is_base_type = true;
+
+    NamedTypeArg malloc_size_param res;
+    malloc_size_param.name = "size";
+    malloc_size_param.type = qword_type;
+    
+    malloc_data.return_type = ptr_type;
+    malloc_data.arguments = cll_list_create();
+    cll_list_append(malloc_data.arguments, (qword)malloc_size_param);
+    malloc_data.is_extern = true;
+    malloc_data.is_stdcall = false;
+    malloc_data.varargs = false;
+
+    NamedTypeArg free_ptr_param res;
+    free_ptr_param.name = "ptr";
+    free_ptr_param.type = ptr_type;
+
+    free_data.return_type = none_type;
+    free_data.arguments = cll_list_create();
+    cll_list_append(free_data.arguments, (qword)free_ptr_param);
+    free_data.is_extern = true;
+    free_data.is_stdcall = false;
+    free_data.varargs = false;
+
+
+    ht_set(gen.functions, "malloc", (qword)malloc_data);
+    ht_set(gen.functions, "free", (qword)free_data);
+
+    cll_list_append(gen.externs, (qword)"extern malloc");
+    cll_list_append(gen.externs, (qword)"extern free");
+
+    ListIterator it = list_iterator(declarations);
+
+    while(list_next(it)) {
+        cll_gen_node(gen, NULL, (Node)it.value);
+    }
+
+    ptr stream = fopen(file_name, "wb");
+
+    fprintf(stream, "bits 64\n");
+    fprintf(stream, "default rel\n\n");
+    fprintf(stream, "segment .text\n");
+
+    // externs/globals
+    it = list_iterator(gen.externs);
+    while(list_next(it)) {
+        fprintf(stream, "    %s\n", (byte*)it.value);
+    }
+    fprintf(stream, "\n");
+    
+    // functions
+    HashTableIterator ht_it = ht_iterator(gen.functions);
+    while(ht_next(ht_it)) {
+        if(!((FunctionData)ht_it.value).is_extern) {
+            fprintf(stream, "%s:\n", ht_it.key);
+            // instructions
+            it = list_iterator(((FunctionData)ht_it.value).body);
+            while(list_next(it)) {
+                if(it.value != 0) fprintf(stream, "    %s\n", (byte*)it.value);
+            }
+            fprintf(stream, "\n");
+        }
+    }
+
+    // initialized data
+    fprintf(stream, "segment .data\n");
+    
+    it = list_iterator(gen.data);
+    while(list_next(it)) {
+        DataSeg dseg = (DataSeg)it.value;
+        if(dseg.value)
+            fprintf(stream, "    %s: d%c %s\n", dseg.name, cll_type_asm_letter(dseg.type_id), dseg.value);
+        else
+            fprintf(stream, "    %s: d%c %d\n", dseg.name, cll_type_asm_letter(dseg.type_id), dseg.num_value);
+    }
+
+    // uninitialized data
+    fprintf(stream, "\n\n");
+    fprintf(stream, "segment .bss\n");
+    it = list_iterator(gen.bss);
+    while(list_next(it)) {
+        BssSeg bseg = (BssSeg)it.value;
+        fprintf(stream, "    %s: res%c %d\n", bseg.name, cll_type_asm_letter(bseg.type_id), bseg.count);
+    }
+
+
+    // TODO
+    free((ptr)gen);
+    fclose(stream);
+    // WILL BE FREED ONCE WRITING ASSEMBLY OUT
+    // free((ptr)malloc_data);
+    // free((ptr)free_data);
+    // free((ptr)free_ptr_param);
+    // free((ptr)malloc_size_param);
+    // free((ptr)ptr_type);
+    // free((ptr)qword_type);
+    // free((ptr)none_type);
+}
+
+byte* PUSH_RAX_INST = "push rax";
+byte* POP_RAX_INST = "pop rax";
+
+proc cll_gen_node(gendata gen, ptr stream, Node node) {
+    byte node_type = node.node_type;
+
+    if(node_type == NT_PROGRAM_EXTERN_VAR) {
+        cll_gen_extern_var(gen, stream, (NodeProgramExternVariable)node);
+    } else if(node_type == NT_PROGRAM_EXTERN_FUNC) { 
+        cll_gen_extern_func(gen, stream, (NodeProgramExternFunction)node);
+    } else if(node_type == NT_NUMBER) {
+        cll_gen_number(gen, stream, (NodeNumberLiteral)node);
+    } else if(node_type == NT_STRING) {
+        cll_gen_string(gen, stream, (NodeStringLiteral)node);
+    } else if(node_type == NT_VARIABLE) {
+        cll_gen_variable(gen, stream, (NodeVariable)node);
+    } else if(node_type == NT_PROGRAM_VARIABLE) {
+        cll_gen_program_var(gen, stream, (NodeProgramVariable)node);
+    } else if(node_type == NT_LOCAL_VARIABLE) {
+        cll_gen_local_var(gen, stream, (NodeLocalVariable)node);
+    } else if(node_type == NT_PROGRAM_FUNCTION) {
+        cll_gen_program_func(gen, stream, (NodeProgramFunction)node);
+    } else if(node_type == NT_COMPOUND_STMT) {
+        cll_gen_compound(gen, stream, (NodeCompoundStmt)node);
+    } else if(node_type == NT_ASSIGN_VARIABLE) {
+        cll_gen_assign_var(gen, stream, (NodeAssignVariable)node);
+    } else if(node_type == NT_EXPR_STMT) {
+        cll_gen_node(gen, stream, ((NodeExprStmt)node).expr);
+        cll_list_pop(gen.cur_body);
+    } else if(node_type == NT_BIN_OP) {
+        cll_gen_binary_op(gen, stream, (NodeBinaryOperation)node);
+    } else if(node_type == NT_ADDR_OF) {
+        cll_gen_addr_of(gen, stream, (NodeAddrOf)node);
+    } else if(node_type == NT_RESERVE_UNINITIALIZED) {
+        cll_gen_res(gen, stream, (NodeReserveUninitialized)node);
+    } else if(node_type == NT_RESERVE_INITIALIZED) {
+        cll_gen_res_init(gen, stream, (NodeReserveInitialized)node);
+    } else if(node_type == NT_DEREF_PTR) {
+        cll_gen_deref_ptr(gen, stream, (NodeDerefPtr)node);
+    } else if(node_type == NT_NOT) {
+        cll_gen_not(gen, stream, (NodeNot)node);
+    } else if(node_type == NT_PUSH_REGISTER) {
+        cll_gen_push_register(gen, stream, (NodePushRegister)node);
+    } else if(node_type == NT_SIZEOF_TYPE) {
+        cll_gen_sizeof_type(gen, stream, (NodeSizeofType)node);
+    } else if(node_type == NT_SIZEOF) {
+        cll_gen_sizeof(gen, stream, (NodeSizeof)node);
+    } else if(node_type == NT_PROGRAM_STRUCT) {
+        cll_gen_program_struct(gen, stream, (NodeProgramStruct)node);
+    } else if(node_type == NT_CAST) {
+        cll_gen_cast(gen, stream, (NodeCast)node);
+    } else if(node_type == NT_CALL_FUNC) {
+        cll_gen_call_function(gen, stream, (NodeCallFunction)node);
+    } else if(node_type == NT_ACCESS_FIELD) {
+        cll_gen_access_field(gen, stream, (NodeAccessField)node);
+    } else if(node_type == NT_WRITE_FIELD) {
+        cll_gen_write_field(gen, stream, (NodeWriteField)node);
+    } else if(node_type == NT_SET_AT_PTR) {
+        cll_gen_set_at_ptr(gen, stream, (NodeSetAtPtr)node);
+    } else if(node_type == NT_IF_STMT) {
+        cll_gen_if_stmt(gen, stream, (NodeIfStmt)node);
+    } else if(node_type == NT_WHILE_STMT) {
+        cll_gen_while_stmt(gen, stream, (NodeWhileStmt)node);
+    } else if(node_type == NT_RETURN) {
+        cll_gen_return(gen, stream, (NodeReturn)node);
+    } else if(node_type == NT_BREAK) {
+        cll_gen_break(gen, stream, (NodeBreak)node);
+    } else if(node_type == NT_PUSH) {
+        cll_gen_push(gen, stream, (NodePush)node);
+    } else if(node_type == NT_POP) {
+        cll_gen_pop(gen, stream, (NodePop)node);
+    } else if(node_type == NT_SIMPLE_STACK_OP) {
+        cll_gen_stack_op(gen, stream, (NodeSimpleStackOperation)node);
+    } else {
+        fprintf(stderr, "Unimplemented generator for node of type %d\n", node_type);
+        exit(1);
+    }
+}
+
+
+proc cll_gen_extern_var(gendata gen, ptr stream, NodeProgramExternVariable node) {
+    GlobalData data res;
+    data.type = node.type;
+    data.size = cll_get_type_size(node.type.id);
+    ht_set(gen.globals, node.name, data);
+
+    byte* extern_str = malloc(8 + strlen(node.name));
+    sprintf(extern_str, "extern %s", node.name);
+    cll_list_append(gen.externs, (qword)extern_str);
+}
+
+proc cll_gen_extern_func(gendata gen, ptr stream, NodeProgramExternFunction node) {
+    FunctionData func res;
+    func.return_type = node.return_type;
+    func.arguments = node.args;
+    func.is_extern = true;
+    func.is_stdcall = node.is_stdcall;
+    func.varargs = node.varargs;
+    ht_set(gen.functions, node.name, func);
+
+    byte* extern_str = malloc(8 + strlen(node.name));
+    sprintf(extern_str, "extern %s", node.name);
+    cll_list_append(gen.externs, (qword)extern_str);
+}
+
+proc cll_gen_program_var(gendata gen, ptr stream, NodeProgramVariable node) {
+    GlobalData data res;
+    data.type = node.type;
+    data.size = cll_get_type_size(node.type.id);
+    ht_set(gen.globals, node.name, data);
+
+    if(node.value) {
+        if(node.value.node_type == NT_NUMBER) {
+            DataSeg dseg res;
+            dseg.type_id = node.type.id;
+            dseg.value = NULL;
+            dseg.num_value = ((NodeNumberLiteral)node.value).value;
+            dseg.name = node.name;
+            cll_list_append(gen.data, dseg);
+        } else if(node.value.node_type == NT_STRING) {
+            if(node.type.id != TYPE_PTR && node.type.id != TYPE_QWORD) {
+                cll_pr_error(node.file_name, node.row, node.col, "Program variable with a initial string constant must be of type QWORD, PTR, or BYTE*");
+            }
+
+            cll_gen_node(gen, stream, (Node)node.value);
+            DataSeg dseg res;
+            dseg.type_id = TYPE_PTR;
+            dseg.name = node.name;
+
+            byte* value = malloc(10);
+            sprintf(value, "__str_%d", gen.current_id-1);
+            dseg.value = value;
+            cll_list_append(gen.data, dseg);
+        } else if((node.value.node_type == NT_RESERVE_UNINITIALIZED) || (node.value.node_type == NT_RESERVE_INITIALIZED)) {
+            if(node.type.id != TYPE_PTR && node.type.id != TYPE_QWORD) {
+                cll_pr_error(node.file_name, node.row, node.col, "Program variable with a initial reserve constant must be of type QWORD or PTR");
+            }
+
+            cll_gen_node(gen, stream, (Node)node.value);
+            DataSeg dseg res;
+            dseg.type_id = TYPE_PTR;
+            dseg.name = node.name;
+
+            byte* value = malloc(14);
+            sprintf(value, "__array_%d", gen.current_id-1);
+            dseg.value = value;
+            cll_list_append(gen.data, dseg);
+        } else {
+            cll_pr_error(node.file_name, node.row, node.col, "Program variable initial value must be a constant value");
+        }
+    } else {
+        BssSeg bseg res;
+        bseg.type_id = node.type.id;
+        bseg.count = 1;
+        bseg.name = node.name;
+        cll_list_append(gen.bss, bseg);
+    }
+
+    if(node.is_global) {
+        byte* extern_str = malloc(8 + strlen(node.name));
+        sprintf(extern_str, "global %s", node.name);
+        cll_list_append(gen.externs, (qword)extern_str);
+    }
+}
+
+proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
+    FunctionData func_data res;
+    func_data.return_type = node.return_type;
+    func_data.arguments = node.args;
+    func_data.varargs = node.varargs;
+    func_data.is_stdcall = node.is_stdcall;
+    func_data.is_extern = false;
+    func_data.body = (DynamicList)NULL;
+
+    ht_set(gen.functions, node.name, (qword)func_data);
+    if(node.forward) return;
+
+
+    DynamicList body = cll_list_create();
+    cll_list_append(body, (qword)"push rbp");
+    cll_list_append(body, (qword)"mov rbp, rsp");
+    cll_list_append(body, 0);
+
+
+    func_data.body = body;
+    gen.cur_locals = cll_local_table((LocalTable)NULL);
+    gen.cur_func_name = node.name;
+    gen.cur_func = func_data;
+    gen.cur_body = body;
+
+    if(node.is_global) {
+        byte* extern_str = malloc(8 + strlen(node.name));
+        sprintf(extern_str, "global %s", node.name);
+        cll_list_append(gen.externs, (qword)extern_str);
+    }
+
+    ListIterator it = list_iterator(node.args);
+    while(list_next(it)) {
+        dword arg_index = it.index;
+        byte* arg_name = ((NamedTypeArg)it.value).name;
+        Type arg_type = ((NamedTypeArg)it.value).type;
+
+        byte arg_type_size = cll_get_type_size(arg_type.id);
+        byte* arg_type_name = cll_type_asm_name(arg_type.id);
+
+        // generate local variable
+        if(arg_type_size > gen.padding_left) {
+            gen.local_offset = gen.local_offset + gen.padding_left;
+            gen.padding_left = 8;
+            gen.locals_size = gen.locals_size + 8; 
+        }
+
+        gen.padding_left = gen.padding_left - arg_type_size;
+        gen.local_offset = gen.local_offset + arg_type_size;
+
+        LocalData local res;
+        local.size = arg_type_size;
+        local.type = arg_type;
+        local.offset = gen.local_offset;
+
+
+        cll_lt_set(gen.cur_locals, arg_name, local);
+        //
+
+        if(arg_index < N_ARGUMENT_REGISTERS) {
+            byte* register_variation = cll_register_var(ARGUMENT_REGISTERS[arg_index], arg_type_size);
+            byte* instruction = malloc(22 + strlen(register_variation) + strlen(arg_type_name));
+            sprintf(instruction, "mov %s [rbp - %d], %s", arg_type_name, gen.local_offset, register_variation);
+            cll_list_append(body, (qword)instruction);
+        } else {
+            byte* rax_var = cll_register_var(RAX, arg_type_size);
+            byte* read_param_inst = malloc(25 + strlen(arg_type_name));
+            byte* instruction = malloc(25 + strlen(arg_type_name));
+
+            sprintf(read_param_inst, "mov %s, %s [rbp + %d]", rax_var, arg_type_name, (48 + ((arg_index - 4) * 8)));
+            sprintf(instruction, "mov %s [rbp - %d], %s", arg_type_name, gen.local_offset, rax_var);
+
+            cll_list_append(body, (qword)read_param_inst);
+            cll_list_append(body, (qword)instruction);
+        }
+    }
+
+    it = list_iterator(node.body);
+    while(list_next(it)) {
+        cll_gen_node(gen, stream, (Node)it.value);
+    }
+
+
+    if(cll_lt_any(gen.cur_locals)) {
+        // int division
+        dword aligned_locals = gen.locals_size / 16;
+        byte rem = (gen.locals_size % 16) > 0;
+
+        byte* instruction = malloc(16);
+        sprintf(instruction, "sub rsp, %d", aligned_locals * 16 + (16 * rem));
+
+        body.data[2] = (qword)instruction;
+    }
+
+    qword last_instruction = body.data[body.current_pos-1];
+    qword is_not_ret;
+
+    if(last_instruction == 0) {
+        is_not_ret = true;
+    } else {
+        is_not_ret = strcmp((byte*)last_instruction, "ret");
+    }
+
+
+    if(node.return_type.id == TYPE_NONE && is_not_ret) {
+        cll_list_append(body, (qword)"mov rsp, rbp");
+        cll_list_append(body, (qword)"pop rbp");
+        cll_list_append(body, (qword)"ret");
+    } else if(is_not_ret) {
+        printf("%s:%d:%d: [ERROR] Missing return statement in function '%s'", node.file_name, node.row, node.col, node.name);
+        exit(1);
+    }
+
+    cll_lt_destory(gen.cur_locals);
+    cll_clear_list(gen.break_stack);
+    gen.break_stack.data[0] = 0;
+}
+
+proc cll_gen_local_var(gendata gen, ptr stream, NodeLocalVariable node) {
+    byte type_size = cll_get_type_size(node.type.id);
+    byte* type_name = cll_type_asm_name(node.type.id);
+
+    if(type_size > gen.padding_left) {
+        gen.local_offset = gen.local_offset + gen.padding_left;
+        gen.padding_left = 8;
+        gen.locals_size = gen.locals_size + 8; 
+    }
+
+    gen.padding_left = gen.padding_left - type_size;
+    gen.local_offset = gen.local_offset + type_size;
+
+    LocalData local res;
+    local.size = type_size;
+    local.type = node.type;
+    local.offset = gen.local_offset;
+
+    cll_lt_set(gen.cur_locals, node.name, local);
+
+    if(!node.value) return;
+
+    Type resolved_type = cll_resolve_type(gen, node.value);
+
+    if((node.type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && node.type.id != TYPE_PTR)) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(node.type), cll_type_name2(resolved_type));
+        exit(1);
+    }
+
+    if((node.type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && node.type.id != TYPE_PTR)) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(node.type), cll_type_name2(resolved_type));
+        exit(1);
+    }
+
+    cll_gen_node(gen, stream, node.value);
+    cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+
+    byte* register_variation = cll_register_var(RAX, type_size);
+    byte* instruction = malloc(22 + strlen(register_variation) + strlen(type_name));
+    sprintf(instruction, "mov %s [rbp - %d], %s", type_name, gen.local_offset, register_variation);
+    cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_compound(gendata gen, ptr stream, NodeCompoundStmt node) {
+    LocalTable old_locals = gen.cur_locals;
+    gen.cur_locals = cll_local_table(old_locals);
+
+    ListIterator it = list_iterator(node.body);
+    while(list_next(it)) {
+        cll_gen_node(gen, stream, (Node)it.value);
+    }
+
+    gen.cur_locals.parent = 0;
+    cll_lt_destory(gen.cur_locals);
+    gen.cur_locals = old_locals;
+}
+
+proc cll_gen_assign_var(gendata gen, ptr stream, NodeAssignVariable node) {
+    Type resolved_type = cll_resolve_type(gen, node.value);
+
+    Type var_type;
+    byte var_size;
+    byte* instruction = malloc(40);
+    byte* type_name;
+
+    LocalData local = cll_lt_get(gen.cur_locals, node.name);
+    if(local) {
+        var_type = local.type;
+        var_size = local.size;
+        type_name = cll_type_asm_name(var_type.id);
+        dword offset = local.offset;
+
+
+        if((var_type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && var_type.id != TYPE_PTR)) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(var_type), cll_type_name2(resolved_type));
+            exit(1);
+        }
+
+        cll_gen_node(gen, stream, node.value);
+        cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+
+        byte* register_variation = cll_register_var(RAX, var_size);
+        byte* instruction = malloc(22 + strlen(register_variation) + strlen(type_name));
+        sprintf(instruction, "mov %s [rbp - %d], %s", type_name, offset, register_variation);
+        cll_list_append(gen.cur_body, (qword)instruction);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+
+        return;
+    }
+
+    GlobalData gdata = ht_get(gen.globals, node.name);
+
+    if(gdata) {
+        var_type = gdata.type;
+        var_size = gdata.size;
+        type_name = cll_type_asm_name(var_type.id);
+
+        if((var_type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && var_type.id != TYPE_PTR)) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(var_type), cll_type_name2(resolved_type));
+            exit(1);
+        }
+
+        cll_gen_node(gen, stream, node.value);
+        cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+
+        byte* register_variation = cll_register_var(RAX, var_size);
+        byte* instruction = malloc(22 + strlen(register_variation) + strlen(type_name) + strlen(node.name));
+        sprintf(instruction, "mov %s [%s], %s", type_name, node.name, register_variation);
+        cll_list_append(gen.cur_body, (qword)instruction);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+
+        return;
+    }
+
+    fprintf(stderr, "%s:%d:%d: [ERROR] Unknown variable '%s'\n", node.file_name, node.row, node.col, node.name);
+    exit(1);
+}
+
+proc cll_gen_number(gendata gen, ptr stream, NodeNumberLiteral node) {
+    if(node.value == 0) {
+        cll_list_append(gen.cur_body, (qword)"xor rax, rax");
+    } else {
+        byte* dest = malloc(20);
+        sprintf(dest, "mov rax, %d", node.value);
+        cll_list_append(gen.cur_body, (qword)dest);
+    }
+    
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_string(gendata gen, ptr stream, NodeStringLiteral node) {
+    byte* hex_str = malloc((strlen(node.value) + 1) * 5);
+    
+    dword i = 0;
+    dword hex_i = 0;
+    while(node.value[i] != '\0') {
+        byte c = node.value[i];
+
+        if(c == '\\') {
+            byte cn = node.value[i + 1];
+            if(cn == 'n') c = '\n';
+            else if(cn == 'r') c = '\r';
+            else if(cn == '"') c = '"';
+            else if(cn == '0') c = '\0';
+            else if(cn == '1') c = 1;
+            else if(cn == '\\') c = '\\';
+            i = i + 1;
+        }
+
+        sprintf((ptr)((qword)hex_str) + hex_i, "0x%02X,", c);
+        i = i + 1;
+        hex_i = hex_i + 5;
+    }
+
+    sprintf((ptr)((qword)hex_str) + hex_i, "0x%02X", 0);
+    hex_i = hex_i + 4;
+    hex_str[hex_i] = '\0';
+
+    DataSeg dseg res;
+    dseg.type_id = TYPE_BYTE;
+    dseg.value = hex_str;
+
+    byte* name = malloc(10);
+    sprintf(name, "__str_%d", gen.current_id);
+    dseg.name = name;
+    
+    if(gen.cur_body) {
+        byte* movinst = malloc(20);
+        sprintf(movinst, "mov rax, __str_%d", gen.current_id);
+        
+        cll_list_append(gen.cur_body, (qword)movinst);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+    }
+
+    gen.current_id = gen.current_id + 1;
+    cll_list_append(gen.data, dseg);
+}
+
+proc cll_gen_variable(gendata gen, ptr stream, NodeVariable node) {
+    LocalData local = cll_lt_get(gen.cur_locals, node.name);
+    Type var_type;
+    byte var_size;
+    byte* instruction = malloc(40);
+    byte* type_name;
+
+    if(local) {
+        var_type = local.type;
+        var_size = local.size;
+        type_name = cll_type_asm_name(var_type.id);
+        dword offset = local.offset;
+
+        if(var_size != 8) {
+            sprintf(instruction, "movsx rax, %s [rbp - %d]", type_name, offset);
+        } else {
+            sprintf(instruction, "mov rax, %s [rbp - %d]", type_name, offset);
+        }
+    }
+
+    GlobalData gdata = ht_get(gen.globals, node.name);
+
+    if(gdata) {
+        var_type = gdata.type;
+        var_size = gdata.size;
+        type_name = cll_type_asm_name(var_type.id);
+
+        if(var_size != 8) {
+            sprintf(instruction, "movsx rax, %s [%s]", type_name, node.name);
+        } else {
+            sprintf(instruction, "mov rax, [%s]", node.name);
+        }
+    }
+
+    if((!gdata) && (!local)) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Unknown variable '%s'\n", node.file_name, node.row, node.col, node.name);
+        exit(1);
+    }
+
+    cll_list_append(gen.cur_body, (qword)instruction);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_binary_op(gendata gen, ptr stream, NodeBinaryOperation node) {
+    if(node.operation == TT_DOUBLE_AND) {
+        cll_gen_node(gen, stream, (Node)node.left);
+
+        dword not_true_jmp = gen.current_label;
+        gen.current_label = gen.current_label + 1;
+
+        cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+        // cll_list_append(gen.cur_body, (qword)"cmp rax, 0");
+
+        byte* jmp_inst = malloc(28);
+        sprintf(jmp_inst, "cmp rax, 0\n    je .L%d", not_true_jmp);
+        cll_list_append(gen.cur_body, (qword)jmp_inst);
+
+        cll_gen_node(gen, stream, (Node)node.right);
+
+        byte* cmp_inst = malloc(143);
+        sprintf(cmp_inst, "pop rax\n    cmp rax, 0\n    setne al\n    movzx rax, al\n    push rax\n    jmp .L%d\n    .L%d:\n    mov rax, 0\n    push rax\n    .L%d:", gen.current_label, not_true_jmp, gen.current_label);
+        cll_list_append(gen.cur_body, (qword)cmp_inst);
+
+        gen.current_label = gen.current_label + 1;
+        return;
+
+    } else if(node.operation == TT_OR) {
+        cll_gen_node(gen, stream, (Node)node.left);
+
+        dword not_true_jmp = gen.current_label;
+        gen.current_label = gen.current_label + 1;
+
+        cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+        // cll_list_append(gen.cur_body, (qword)"cmp rax, 0");
+
+        byte* jmp_inst = malloc(29);
+        sprintf(jmp_inst, "cmp rax, 0\n    jne .L%d", not_true_jmp);
+        cll_list_append(gen.cur_body, (qword)jmp_inst);
+
+        cll_gen_node(gen, stream, (Node)node.right);
+
+        byte* cmp_inst = malloc(143);
+        sprintf(cmp_inst, "pop rax\n    cmp rax, 0\n    setne al\n    movzx rax, al\n    push rax\n    jmp .L%d\n    .L%d:\n    mov rax, 1\n    push rax\n    .L%d:", gen.current_label, not_true_jmp, gen.current_label);
+        cll_list_append(gen.cur_body, (qword)cmp_inst);
+
+        gen.current_label = gen.current_label + 1;
+        return;
+    }
+
+    cll_gen_node(gen, stream, (Node)node.right);
+    cll_gen_node(gen, stream, (Node)node.left);
+
+    if(node.operation == TT_PLUS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    add rax, rbx\n    push rax");
+    } else if(node.operation == TT_MINUS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    sub rax, rbx\n    push rax");
+    } else if(node.operation == TT_STAR) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    mul rbx\n    push rax");
+    } else if(node.operation == TT_SLASH) {
+        cll_list_append(gen.cur_body, (qword)"xor rdx, rdx\n    pop rax\n    pop rbx\n    div rbx\n    push rax");
+    } else if(node.operation == TT_DOUBLE_EQUALS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    cmp rax, rbx\n    sete al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_NOT_EQUALS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    cmp rax, rbx\n    setne al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_GREATER) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    cmp rax, rbx\n    setg al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_LOWER) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    sub rbx, 1\n    cmp rax, rbx\n    setle al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_LOWER_EQUALS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    cmp rax, rbx\n    setle al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_GREATER_EQUALS) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    sub rbx, 1\n    cmp rax, rbx\n    setg al\n    movzx rax, al\n    push rax");
+    } else if(node.operation == TT_PRECENT) {
+        cll_list_append(gen.cur_body, (qword)"xor rdx, rdx\n    pop rax\n    pop rbx\n    div rbx\n    push rdx");
+    } else if(node.operation == TT_ARROW_UP) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    xor rax, rbx\n    push rax");
+    } else if(node.operation == TT_PIPE) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    or rax, rbx\n    push rax");
+    } else if(node.operation == TT_AND) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    and rax, rbx\n    push rax");
+    }
+}
+
+
+
+proc cll_gen_addr_of(gendata gen, ptr stream, NodeAddrOf node) {
+    LocalData local = cll_lt_get(gen.cur_locals, node.name);
+    byte* instruction = malloc(40);
+
+    if(local) {
+        dword offset = local.offset;
+        sprintf(instruction, "lea rax, [rbp - %d]", offset);
+    }
+
+    GlobalData gdata = ht_get(gen.globals, node.name);
+
+    if(gdata) {
+        sprintf(instruction, "mov rax, %s", node.name);
+    }
+
+    if((!gdata) && (!local)) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Unknown variable '%s'\n", node.file_name, node.row, node.col, node.name);
+        exit(1);
+    }
+
+    cll_list_append(gen.cur_body, (qword)instruction);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_res(gendata gen, ptr stream, NodeReserveUninitialized node) {
+    BssSeg res_arr res;
+    res_arr.type_id = node.type.id;
+    res_arr.count = node.size;
+
+    byte* seg_name = malloc(14);
+    sprintf(seg_name, "__array_%d", gen.current_id);
+
+    res_arr.name = seg_name;
+    cll_list_append(gen.bss, (qword)res_arr);
+    
+    if(gen.cur_body) {
+        byte* movinst = malloc(23);
+        sprintf(movinst, "mov rax, __array_%d", gen.current_id);
+        
+        cll_list_append(gen.cur_body, (qword)movinst);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+    }
+
+    gen.current_id = gen.current_id + 1;
+}
+
+proc cll_gen_res_init(gendata gen, ptr stream, NodeReserveInitialized node) {
+    DynamicList data = cll_list_create();
+
+    ListIterator it = list_iterator(node.data);
+    while(list_next(it)) {
+        Node it_node = (Node)it.value;
+        byte* value_to_append;
+
+        if(it_node.node_type == NT_NUMBER) {
+            qword number = ((NodeNumberLiteral)it_node).value;
+            value_to_append = malloc(21);
+
+            if(list_it_at_end(it))
+                sprintf(value_to_append, "%lld", number);
+            else
+                sprintf(value_to_append, "%lld,", number);
+
+        } else if(it_node.node_type == NT_STRING) {
+            if(node.type.id != TYPE_PTR && node.type.id != TYPE_QWORD) {
+                cll_pr_error(node.file_name, node.row, node.col, "Reserved array type is not big enough to hold a string (byte*, qword, ptr)");
+            }
+
+            DynamicList body = gen.cur_body;
+            gen.cur_body = (DynamicList)NULL;
+            cll_gen_node(gen, stream, (Node)it_node);
+            gen.cur_body = body;
+            value_to_append = malloc(10);
+
+            if(list_it_at_end(it))
+                sprintf(value_to_append, "__str_%d", gen.current_id-1);
+            else
+                sprintf(value_to_append, "__str_%d,", gen.current_id-1);
+
+        } else if((it_node.node_type == NT_RESERVE_UNINITIALIZED) || (it_node.node_type == NT_RESERVE_INITIALIZED)) {
+            if(node.type.id != TYPE_PTR && node.type.id != TYPE_QWORD) {
+                cll_pr_error(node.file_name, node.row, node.col, "Reserved array type is not big enough to hold a reserved array (qword, ptr)");
+            }
+
+            DynamicList body = gen.cur_body;
+            gen.cur_body = (DynamicList)NULL;
+            cll_gen_node(gen, stream, (Node)it_node);
+            gen.cur_body = body;
+            value_to_append = malloc(14);
+
+            if(list_it_at_end(it))
+                sprintf(value_to_append, "__array_%d", gen.current_id-1);
+            else
+                sprintf(value_to_append, "__array_%d,", gen.current_id-1);
+        } else if(it_node.node_type == NT_CAST && ((NodeCast)it_node).value.node_type == NT_NUMBER) {
+            qword number = ((NodeNumberLiteral)((NodeCast)it_node).value).value;
+            value_to_append = malloc(21);
+
+            if(list_it_at_end(it))
+                sprintf(value_to_append, "%lld", number);
+            else
+                sprintf(value_to_append, "%lld,", number);
+        } else {
+            cll_pr_error(node.file_name, node.row, node.col, "Reserved array value must be a constant value");
+        }
+
+        cll_list_append(data, (qword)value_to_append);
+    }
+
+    byte* seg_name = malloc(14);
+    sprintf(seg_name, "__array_%d", gen.current_id);
+
+    dword final_size;
+
+    it = list_iterator(data);
+    while(list_next(it)) {
+        final_size = final_size + strlen((ptr)it.value);
+    }
+
+    byte* final_value = malloc(final_size + 1);
+    // memcpy((ptr)((qword)final_value) + final_size, "\0", 1);
+
+    dword strpos = 0;
+    it = list_iterator(data);
+    while(list_next(it)) {
+        ptr str = (ptr)it.value;
+        qword len = strlen(str);
+        memcpy((ptr)((qword)final_value) + strpos, str, len);
+        strpos = strpos + len;
+    }
+
+    final_value[strpos] = 0;
+
+    DataSeg res_arr res;
+    res_arr.name = seg_name;
+    res_arr.type_id = node.type.id;
+    res_arr.value = final_value;
+    
+    if(gen.cur_body) {
+        byte* movinst = malloc(23);
+        sprintf(movinst, "mov rax, __array_%d", gen.current_id);
+        
+        cll_list_append(gen.cur_body, (qword)movinst);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+    }
+
+    gen.current_id = gen.current_id + 1;
+    cll_list_append(gen.data, (qword)res_arr);
+}
+
+proc cll_gen_deref_ptr(gendata gen, ptr stream, NodeDerefPtr node) {
+    cll_gen_node(gen, stream, node.pointer);
+
+    if(node.offset)
+        cll_gen_node(gen, stream, node.offset);
+    else
+        cll_list_append(gen.cur_body, (qword)"push 0");
+
+    Type ptr_type = cll_resolve_type(gen, node.pointer);
+    if(ptr_type.id != TYPE_PTR)
+        cll_pr_error(node.file_name, node.row, node.col, "Tried dereferencing a non pointer type");
+
+    Type base_type = cll_ptr_base(ptr_type);
+    if(!base_type) {
+        cll_pr_error(node.file_name, node.row, node.col, "Tried dereferencing a pointer with no base type");
+    }
+
+    byte base_type_size = cll_get_type_size(base_type.id);
+    byte* base_name = cll_type_asm_name(base_type.id);
+
+    byte* instruction = malloc(124 + strlen(base_name));
+
+    if(base_type_size != 8)
+        sprintf(instruction, "pop rbx\n    mov rax, %d\n    mul rbx\n    mov rbx, rax\n    pop rax\n    add rax, rbx\n    movsx rax, %s [rax]\n    push rax", base_type_size, base_name);
+    else
+        sprintf(instruction, "pop rbx\n    mov rax, %d\n    mul rbx\n    mov rbx, rax\n    pop rax\n    add rax, rbx\n    mov rax, %s [rax]\n    push rax", base_type_size, base_name);
+
+    cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_not(gendata gen, ptr stream, NodeNot node) {
+    cll_gen_node(gen, stream, node.value);
+    cll_list_append(gen.cur_body, (qword)"pop rax\n    cmp rax, 0\n    sete al\n    movzx rax, al\n    push rax");
+}
+
+proc cll_gen_push_register(gendata gen, ptr stream, NodePushRegister node) {
+    byte* instruction = malloc(6 + strlen(node.register));
+    sprintf(instruction, "push %s", node.register);
+    cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_sizeof_type(gendata gen, ptr stream, NodeSizeofType node) {
+    byte* instruction = malloc(10);
+
+    if(node.type.id == TYPE_STRUCT) {
+        StructType stype = (StructType)node.type;
+        // byte* struct_name = stype.struct_name;
+        StructData sdata = (StructData)ht_get(gen.struct_data, stype.struct_name);
+        sprintf(instruction, "push %d", sdata.size);
+    } else {
+        sprintf(instruction, "push %d", cll_get_type_size(node.type.id));
+    }
+
+    cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_sizeof(gendata gen, ptr stream, NodeSizeof node) {
+    Type value_type = cll_resolve_type(gen, node.value);
+    byte* instruction = malloc(10);
+    sprintf(instruction, "push %d", cll_get_type_size(value_type.id));
+    cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_program_struct(gendata gen, ptr stream, NodeProgramStruct node) {
+    HashTable fields = ht_create();
+
+    byte max_align = 1;
+    word width_sum = 0;
+
+    ListIterator it = list_iterator(node.fields);
+    while(list_next(it)) {
+        NamedTypeArg sfield = (NamedTypeArg)it.value;
+        Type sfield_type = sfield.type;
+        byte* sfield_name = sfield.name;
+        byte sfield_size = cll_get_type_size(sfield_type.id);
+        
+        if(sfield_size > max_align) {
+            max_align = sfield_size;
+        }
+
+        byte padding = 0;
+        byte remainder = width_sum % sfield_size;
+
+        if((width_sum > 0) && (remainder != 0)) {
+            padding = sfield_size - remainder;
+        }
+
+        word offset = width_sum + padding;
+
+        StructField struct_field res;
+        struct_field.name = sfield_name;
+        struct_field.type = sfield_type;
+        struct_field.offset = offset;
+        struct_field.size = sfield_size;
+
+        // cll_list_append(fields, struct_field);
+        ht_set(fields, sfield_name, (qword)struct_field);
+
+        word padded_size = sfield_size + padding;
+        width_sum = width_sum + padded_size;
+    }
+
+    byte rem = width_sum % max_align;
+    if(rem != 0) {
+        width_sum = width_sum + (max_align - rem);
+    }
+
+    StructData struct_data res;
+    struct_data.fields = fields;
+    struct_data.size = width_sum;
+    struct_data.largest_size = max_align;
+
+    ht_set(gen.struct_data, node.name, (qword)struct_data);
+}
+
+proc cll_gen_cast(gendata gen, ptr stream, NodeCast node) {
+    cll_gen_node(gen, stream, node.value);
+}
+
+proc cll_gen_call_function(gendata gen, ptr stream, NodeCallFunction node) {
+    byte* func_name = node.name;
+
+    FunctionData func_data = ht_get(gen.functions, func_name);
+    if(!func_data) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Tried calling an undefined function '%s'\n", node.file_name, node.row, node.col, func_name);
+        exit(1);
+    }
+
+    DynamicList callee_args = func_data.arguments;
+    dword caller_args_len = node.args.current_pos;
+    dword callee_args_len = callee_args.current_pos;
+
+    if(caller_args_len < callee_args_len) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Too few arguments passed to function '%s'\n", node.file_name, node.row, node.col, func_name);
+        exit(1);
+    }
+
+    if(caller_args_len > callee_args_len && !func_data.varargs) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Too many arguments passed to function '%s'\n", node.file_name, node.row, node.col, func_name);
+        exit(1);
+    }
+
+    // Check types passed to function
+    ListIterator it = list_iterator(node.args);
+    while(list_next(it)) {
+        if(it.index == callee_args_len) break;
+
+        Node caller_value = (Node)it.value;
+        Type callee_type = ((NamedTypeArg)callee_args.data[it.index]).type;
+
+        Type resolved_type = cll_resolve_type(gen, caller_value);
+        assert(resolved_type != (Type)NULL, here, "Failed to resolve caller parameter");
+
+        if((callee_type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && callee_type.id != TYPE_PTR)) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Passed wrong type of parameter to function '%s', parameter #%d expected '%s', but got '%s'\n", node.file_name, node.row, node.col, func_name, it.index + 1, cll_type_name2(callee_type), cll_type_name2(resolved_type));
+            exit(1);
+        }
+    }
+
+
+    it = list_rev_iterator(node.args);
+    while(list_next(it)) {
+        cll_gen_node(gen, stream, (Node)it.value);
+    }
+
+    word i = 0;
+    word endl = min(caller_args_len, N_ARGUMENT_REGISTERS);
+    while(i < endl) {
+        byte reg = ARGUMENT_REGISTERS[i];
+        byte* instruction = malloc(8);
+        sprintf(instruction, "pop %s", cll_register_var(reg, 8));
+        cll_list_append(gen.cur_body, (qword)instruction);
+        i = i + 1;
+    }
+
+    byte* call_inst = malloc(48 + strlen(func_name) + (5 * func_data.is_stdcall));
+
+    if(func_data.is_stdcall)
+        sprintf(call_inst, "sub rsp, 32\n    call %s", func_name);
+    else
+        sprintf(call_inst, "sub rsp, 32\n    call %s\n    add rsp, %d", func_name, 32 + (max(caller_args_len - 4, 0) * 8));
+
+
+    cll_list_append(gen.cur_body, (qword)call_inst);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_set_at_ptr(gendata gen, ptr stream, NodeSetAtPtr node) {
+    cll_gen_node(gen, stream, node.value);
+    cll_gen_node(gen, stream, node.pointer);
+
+    if(node.offset)
+        cll_gen_node(gen, stream, node.offset);
+    else
+        cll_list_append(gen.cur_body, (qword)"push 0");
+
+    Type ptr_type = cll_resolve_type(gen, node.pointer);
+    if(ptr_type.id != TYPE_PTR)
+        cll_pr_error(node.file_name, node.row, node.col, "Tried assinging at a non pointer type");
+
+    Type base_type = cll_ptr_base(ptr_type);
+    if(!base_type) {
+        cll_pr_error(node.file_name, node.row, node.col, "Tried assinging at a pointer with no base type");
+    }
+
+    byte base_type_size = cll_get_type_size(base_type.id);
+    byte* base_name = cll_type_asm_name(base_type.id);
+
+    byte* instruction = malloc(136 + strlen(base_name));
+    sprintf(instruction, "pop rbx\n    mov rax, %d\n    mul rbx\n    mov rbx, rax\n    pop rax\n    add rax, rbx\n    pop rbx\n    mov %s [rax], %s", base_type_size, base_name, cll_register_var(RBX, base_type_size));
+    cll_list_append(gen.cur_body, (qword)instruction);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_access_field(gendata gen, ptr stream, NodeAccessField node) {
+    cll_gen_node(gen, stream, node.struct_pointer);
+
+    StructType struct_type = (StructType)cll_resolve_type(gen, node.struct_pointer);
+    if(struct_type.id != TYPE_STRUCT) {
+        cll_pr_error(node.file_name, node.row, node.col, "Attempted struct field access on a non struct type");
+    }
+
+    byte* struct_name = struct_type.struct_name;
+    StructData struct_data = ht_get(gen.struct_data, struct_name);
+    HashTable fields = struct_data.fields;
+
+    StructField sfield = ht_get(fields, node.name);
+    if(!sfield) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Unknown struct field '%s'", node.file_name, node.row, node.col, node.name);
+        exit(1);
+    }
+
+    byte* asm_name = cll_type_asm_name(sfield.type.id);
+    byte* inst = malloc(53 + strlen(asm_name));
+
+    if(sfield.size != 8)
+        sprintf(inst, "pop rax\n    add rax, %d\n    movsx rax, %s [rax]", sfield.offset, asm_name);
+    else
+        sprintf(inst, "pop rax\n    add rax, %d\n    mov rax, %s [rax]", sfield.offset, asm_name);
+
+
+    cll_list_append(gen.cur_body, (qword)inst);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_write_field(gendata gen, ptr stream, NodeWriteField node) {
+    cll_gen_node(gen, stream, node.struct_pointer);
+
+    StructType struct_type = (StructType)cll_resolve_type(gen, node.struct_pointer);
+    if(struct_type.id != TYPE_STRUCT) {
+        cll_pr_error(node.file_name, node.row, node.col, "Attempted struct field access on a non struct type");
+    }
+
+    byte* struct_name = struct_type.struct_name;
+    StructData struct_data = ht_get(gen.struct_data, struct_name);
+    HashTable fields = struct_data.fields;
+
+    StructField sfield = ht_get(fields, node.name);
+    if(!sfield) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Unknown struct field '%s'", node.file_name, node.row, node.col, node.name);
+        exit(1);
+    }
+
+    cll_gen_node(gen, stream, node.value);
+
+    byte* asm_name = cll_type_asm_name(sfield.type.id);
+    byte* inst = malloc(63 + strlen(asm_name));
+    
+    sprintf(inst, "pop rbx\n    pop rax\n    add rax, %d\n    mov %s [rax], %s", sfield.offset, asm_name, cll_register_var(RBX, sfield.size));
+    
+    cll_list_append(gen.cur_body, (qword)inst);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+}
+
+proc cll_gen_if_stmt(gendata gen, ptr stream, NodeIfStmt node) {
+    cll_gen_node(gen, stream, node.value);
+    cll_list_append(gen.cur_body, (qword)"pop rax\n    cmp rax, 0");
+
+    dword jmp_idx = gen.cur_body.current_pos;
+    dword else_idx = 0;
+    cll_list_append(gen.cur_body, 0);
+
+    cll_gen_node(gen, stream, node.body);
+
+    if(node.else_body) {
+        else_idx = gen.cur_body.current_pos;
+        cll_list_append(gen.cur_body, 0);
+    }
+
+    byte* cur_lbl = malloc(10);
+    byte* je_inst = malloc(11);
+    sprintf(cur_lbl, ".L%d:", gen.current_label);
+    cll_list_append(gen.cur_body, (qword)cur_lbl);
+    sprintf(je_inst, "je .L%d", gen.current_label);
+    gen.current_label = gen.current_label + 1;
+    gen.cur_body.data[jmp_idx] = je_inst;
+
+    if(node.else_body) {
+        cll_gen_node(gen, stream, node.else_body);
+        byte* cur_else_lbl = malloc(10);
+        byte* jmp_inst = malloc(13);
+        sprintf(cur_else_lbl, ".L%d:", gen.current_label);
+        cll_list_append(gen.cur_body, (qword)cur_else_lbl);
+        sprintf(jmp_inst, "jmp .L%d", gen.current_label);
+        gen.cur_body.data[else_idx] = jmp_inst;
+        gen.current_label = gen.current_label + 1;
+    }
+}
+
+proc cll_gen_while_stmt(gendata gen, ptr stream, NodeWhileStmt node) {
+    dword while_label = gen.current_label;
+    byte* while_lbl_str = malloc(10);
+    sprintf(while_lbl_str, ".L%d:", gen.current_label);
+    cll_list_append(gen.cur_body, (qword)while_lbl_str);
+    gen.current_label = gen.current_label + 1;
+    
+    cll_gen_node(gen, stream, node.value);
+    cll_list_append(gen.cur_body, (qword)"pop rax\n    cmp rax, 0");
+
+    dword next_label = gen.current_label;
+    ptr next_lbl_str = malloc(8);
+    sprintf(next_lbl_str, ".L%d", next_label);
+    gen.current_label = gen.current_label + 1;
+
+    ptr je_inst = malloc(4 + strlen(next_lbl_str));
+    sprintf(je_inst, "je %s", next_lbl_str);
+    cll_list_append(gen.cur_body, (qword)je_inst);
+    cll_list_append(gen.break_stack, (qword)next_lbl_str);
+    cll_gen_node(gen, stream, node.body);
+
+    ptr jmp_after = malloc(12);
+    sprintf(jmp_after, "jmp .L%d", while_label);
+    cll_list_append(gen.cur_body, (qword)jmp_after);
+
+    ptr break_label = malloc(2 + strlen(next_lbl_str));
+    sprintf(break_label, "%s:", next_lbl_str);
+    cll_list_append(gen.cur_body, (qword)break_label);
+
+    cll_list_pop(gen.break_stack);
+}
+
+proc cll_gen_return(gendata gen, ptr stream, NodeReturn node) {
+    if((gen.cur_func.return_type.id == TYPE_NONE) && node.value) {
+        cll_pr_error(node.file_name, node.row, node.col, "Cannot return a value in a function that doesn't specify a return value");
+    }
+
+
+    if(node.value) {
+        cll_gen_node(gen, stream, node.value);
+        cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+    } else if(gen.cur_func.return_type.id != TYPE_NONE) {
+        cll_pr_error(node.file_name, node.row, node.col, "Missing return value");
+    }
+
+    cll_list_append(gen.cur_body, (qword)"mov rsp, rbp\n    pop rbp");
+    cll_list_append(gen.cur_body, (qword)"ret");
+}
+
+proc cll_gen_break(gendata gen, ptr stream, NodeBreak node) {
+    if(!gen.break_stack.current_pos) {
+        cll_pr_error(node.file_name, node.row, node.col, "Cannot use break outside of loops");
+    }
+
+    ptr lbl = (ptr)gen.break_stack.data[gen.break_stack.current_pos - 1];
+    ptr inst = malloc(5 + strlen(lbl));
+    sprintf(inst, "jmp %s", lbl);
+    cll_list_append(gen.cur_body, (qword)inst);
+}
+
+proc cll_gen_push(gendata gen, ptr stream, NodePush node) {
+    cll_gen_node(gen, stream, node.value);
+}
+
+proc cll_gen_pop(gendata gen, ptr stream, NodePop node) {
+    if(!node.name) {
+        cll_list_append(gen.cur_body, (qword)"add rsp, 8");
+        return;
+    }
+
+    // Type resolved_type = cll_resolve_type(gen, node.value);
+
+    Type var_type;
+    byte var_size;
+    byte* instruction = malloc(40);
+    byte* type_name;
+    
+    cll_list_append(gen.cur_body, (qword)POP_RAX_INST);
+
+    LocalData local = cll_lt_get(gen.cur_locals, node.name);
+    if(local) {
+        var_type = local.type;
+        var_size = local.size;
+        type_name = cll_type_asm_name(var_type.id);
+        dword offset = local.offset;
+
+
+        // if((var_type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && var_type.id != TYPE_PTR)) {
+        //    fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(var_type), cll_type_name2(resolved_type));
+        //    exit(1);
+        //}
+
+
+        byte* register_variation = cll_register_var(RAX, var_size);
+        byte* instruction = malloc(22 + strlen(register_variation) + strlen(type_name));
+        sprintf(instruction, "mov %s [rbp - %d], %s", type_name, offset, register_variation);
+        cll_list_append(gen.cur_body, (qword)instruction);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+
+        return;
+    }
+
+    GlobalData gdata = ht_get(gen.globals, node.name);
+
+    if(gdata) {
+        var_type = gdata.type;
+        var_size = gdata.size;
+        type_name = cll_type_asm_name(var_type.id);
+
+        // if((var_type.id == TYPE_PTR && resolved_type.id != TYPE_PTR) || (resolved_type.id == TYPE_PTR && var_type.id != TYPE_PTR)) {
+        //    fprintf(stderr, "%s:%d:%d: [ERROR] Tried assinging non matching types for variable '%s', expected '%s', but got '%s'\n", node.file_name, node.row, node.col, node.name, cll_type_name2(var_type), cll_type_name2(resolved_type));
+        //    exit(1);
+        //}
+
+        byte* register_variation = cll_register_var(RAX, var_size);
+        byte* instruction = malloc(22 + strlen(register_variation) + strlen(type_name) + strlen(node.name));
+        sprintf(instruction, "mov %s [%s], %s", type_name, node.name, register_variation);
+        cll_list_append(gen.cur_body, (qword)instruction);
+        cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
+
+        return;
+    }
+
+    fprintf(stderr, "%s:%d:%d: [ERROR] Unknown variable '%s'\n", node.file_name, node.row, node.col, node.name);
+    exit(1);
+}
+
+proc cll_gen_stack_op(gendata gen, ptr stream, NodeSimpleStackOperation node) {
+    if(node.operation == TT_SWAP) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    push rax\n    push rbx");
+    } else if(node.operation == TT_OVER) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    push rbx\n    push rax\n    push rbx");
+    } else if(node.operation == TT_DUP) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    push rax\n    push rax");
+    } else if(node.operation == TT_DIVMOD) {
+        cll_list_append(gen.cur_body, (qword)"xor rdx, rdx\n    pop rbx\n    pop rax\n    div rbx\n    push rax\n    push rdx");
+    } else if(node.operation == TT_RET) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    mov rsp, rbp\n    pop rbp");
+        cll_list_append(gen.cur_body, (qword)"ret");
+    } else if(node.operation == TT_ADD) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    add rax, rbx\n    push rax");
+    } else if(node.operation == TT_SUB) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    sub rax, rbx\n    push rax");
+    } else if(node.operation == TT_MUL) {
+        cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    mul rbx\n    push rax");
+    } else {
+        assert(false, here, "Unreachable");
+    }
+}
+
+proc cll_resolve_type(gendata gen, Node node) -> Type {
+    Type type;
+
+    if(node.node_type == NT_NUMBER) {
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_QWORD;
+        type.is_base_type = true;
+        return type;
+    } else if(node.node_type == NT_STRING) {
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_PTR;
+        type.is_base_type = true;
+        return type;
+    } else if(node.node_type == NT_VARIABLE) {
+        NodeVariable var_node = (NodeVariable)node;
+        LocalData local = cll_lt_get(gen.cur_locals, var_node.name);
+        if(local) {
+            return local.type;
+        }
+
+        GlobalData gdata = ht_get(gen.globals, var_node.name);
+        if(gdata) {
+            return gdata.type;
+        }
+
+        fprintf(stderr, "%s:%d:%d: [ERROR] Unknown variable '%s'\n", var_node.file_name, var_node.row, var_node.col, var_node.name);
+        exit(1);
+    } else if(node.node_type == NT_BIN_OP) {
+        NodeBinaryOperation binop = (NodeBinaryOperation)node;
+
+        Type left_type = cll_resolve_type(gen, binop.left);
+        Type right_type = cll_resolve_type(gen, binop.right);
+
+        byte left_size = cll_get_type_size(left_type.id);
+        byte right_size = cll_get_type_size(right_type.id);
+        byte operation = binop.operation;
+
+        if((operation == TT_PLUS) || (operation == TT_MINUS) || (operation == TT_STAR) || (operation == TT_SLASH) || (operation == TT_AND) || (operation == TT_ARROW_UP) || (operation == TT_PIPE)) {
+            if(left_size > right_size) {
+                return left_type;
+            }
+
+            return right_type;
+        }
+
+        if((operation == TT_PRECENT) || (operation == TT_NOT_EQUALS) || (operation == TT_LOWER_EQUALS) || (operation == TT_GREATER_EQUALS) || (operation == TT_GREATER) || (operation == TT_LOWER) || (operation == TT_DOUBLE_EQUALS) || (operation == TT_DOUBLE_AND) || (operation == TT_OR)) {
+            Type byte_type res;
+            byte_type.id = TYPE_BYTE;
+            byte_type.is_base_type = true;
+
+            return byte_type;
+        }
+        
+        assert(false, here, "Unreachable");
+    } else if((node.node_type == NT_RESERVE_UNINITIALIZED) || (node.node_type == NT_RESERVE_INITIALIZED)) {
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_PTR;
+        type.is_base_type = false;
+        type.base_type = ((NodeReserveUninitialized)node).type;
+        return type;
+    } else if(node.node_type == NT_ADDR_OF) {
+        NodeAddrOf addrof = (NodeAddrOf)node;
+        Type base_type = 0;
+
+        LocalData local;
+        GlobalData globald;
+
+        if(local = cll_lt_get(gen.cur_locals, addrof.name)) {
+            base_type = local.type;
+        } else if(globald = ht_get(gen.globals, addrof.name)) {
+            base_type = globald.type;
+        } else {
+            assert(false, here, "Unreachable");
+        }
+
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_PTR;
+        type.is_base_type = false;
+        type.base_type = base_type;
+        return type;
+    } else if(node.node_type == NT_DEREF_PTR) {
+        NodeDerefPtr deref = (NodeDerefPtr)node;
+        Type ptr_type = cll_resolve_type(gen, deref.pointer);
+        Type base_type = cll_ptr_base(ptr_type);
+
+        if(!base_type) {
+            cll_pr_error(deref.file_name, deref.row, deref.col, "Tried dereferencing a pointer with no base type");
+        }
+
+        return base_type;
+    } else if(node.node_type == NT_SIZEOF || node.node_type == NT_SIZEOF_TYPE) {
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_QWORD;
+        type.is_base_type = true;
+        return type;
+    } else if(node.node_type == NT_CAST) {
+        return ((NodeCast)node).type;
+    } else if(node.node_type == NT_CALL_FUNC) {
+        NodeCallFunction callf = (NodeCallFunction)node;
+        FunctionData func_data = ht_get(gen.functions, callf.name);
+        if(!func_data) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Tried calling an undefined function '%s'\n", callf.file_name, callf.row, callf.col, callf.name);
+            exit(1);
+        }
+
+        return func_data.return_type;
+    } else if(node.node_type == NT_ACCESS_FIELD) {
+        NodeAccessField accessfield = (NodeAccessField)node;
+
+        StructType struct_type = (StructType)cll_resolve_type(gen, accessfield.struct_pointer);
+        if(struct_type.id != TYPE_STRUCT) {
+            cll_pr_error(accessfield.file_name, accessfield.row, accessfield.col, "Attempted struct field access on a non struct type");
+        }
+
+        byte* struct_name = struct_type.struct_name;
+        StructData struct_data = ht_get(gen.struct_data, struct_name);
+        HashTable fields = struct_data.fields;
+
+        StructField sfield = ht_get(fields, accessfield.name);
+        if(!sfield) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Unknown struct field '%s'", accessfield.file_name, accessfield.row, accessfield.col, accessfield.name);
+            exit(1);
+        }
+
+        return sfield.type;
+    } else if(node.node_type == NT_PUSH_REGISTER) {
+        Type qword_type res;
+        qword_type.id = TYPE_QWORD;
+        qword_type.is_base_type = true;
+
+        byte* register = ((NodePushRegister)node).register;
+
+        if(strcmp(register, "rsp") || strcmp(register, "rbp")) {
+            return qword_type;
+        }
+
+        type = (Type)malloc(sizeof(Type));
+        type.id = TYPE_PTR;
+        type.is_base_type = false;
+        type.base_type = qword_type;
+
+        return type;
+    }
+
+    fprintf(stderr, "Unknown type %d\n", node.node_type);
+    assert(false, here, "Unreachable");
+    return 0;
+}
+
+proc cll_type_name2(Type type) -> byte* {
+    if(type.id == TYPE_STRUCT) {
+        StructType struct_t = (StructType)type;
+        return struct_t.struct_name;
+    }
+
+    return cll_type_name(type.id);
+}
+
+proc cll_ptr_base(Type type) -> Type {
+    if(type.id == TYPE_PTR && !type.is_base_type) {
+        return type.base_type;
+    }
+
+    return (Type)NULL;
+}

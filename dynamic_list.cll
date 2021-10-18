@@ -1,0 +1,121 @@
+
+extern proc realloc(ptr pointer, qword new_size) -> ptr;
+
+
+struct DynamicList {
+    qword* data;
+    dword size;
+    dword current_pos;
+}
+
+
+
+%define STARTING_NUM_ELEMENTS [1]
+%define GROW_NUMBER [2]
+%define LIST_NULL [0-1]
+
+proc cll_list_create() -> DynamicList {
+    DynamicList list res;
+    dword size = STARTING_NUM_ELEMENTS * sizeof(qword);
+
+    list.data = malloc(size);
+    list.current_pos = 0;
+    list.size = size;
+
+    return list;
+}
+
+
+proc cll_list_append(DynamicList list, qword value) {
+    if(list.current_pos * sizeof(qword) >= list.size) {
+        qword new_size = list.size * GROW_NUMBER;
+        list.data = realloc(list.data, new_size);
+        list.size = new_size;
+    }
+
+    list.data[list.current_pos] = value;
+    list.current_pos = list.current_pos + 1;
+}
+
+
+proc cll_list_get(DynamicList list, qword index) -> qword {
+    if(index >= list.current_pos or index < 0)
+        return LIST_NULL;
+
+    return list.data[index];
+}
+
+proc cll_list_pop(DynamicList list) -> qword {
+    if(list.current_pos > 0) {
+        list.current_pos = list.current_pos - 1;
+        return list.data[list.current_pos];
+    }
+
+    return 0;
+}
+
+proc cll_clear_list(DynamicList list) {
+    list.current_pos = 0;
+}
+
+
+proc cll_free_list(DynamicList list) {
+    free(list.data);
+    free((ptr)list);
+}
+
+struct ListIterator {
+    qword value;
+    dword index;
+
+    DynamicList list;
+    dword lindex;
+    byte reversed;
+    // dword index;
+}
+
+proc list_iterator(DynamicList list) -> ListIterator {
+    ListIterator it res;
+    it.list = list;
+    it.lindex = 0;
+    it.reversed = false;
+    return it;
+}
+
+proc list_rev_iterator(DynamicList list) -> ListIterator {
+    ListIterator it res;
+    it.list = list;
+    it.lindex = list.current_pos;
+    it.reversed = true;
+    return it;
+}
+
+proc list_next(ListIterator it) -> qword {
+    // Loop till we've hit end of entries array.
+    DynamicList list = it.list;
+
+    if((!it.reversed) && it.lindex < list.current_pos) {
+        dword i = it.lindex;
+        it.lindex = it.lindex + 1;
+        it.index = i;
+        it.value = list.data[i];
+        return true;
+    } else if(it.reversed && it.lindex > 0) {
+        it.lindex = it.lindex - 1;
+        dword i = it.lindex;
+        it.index = i;
+        it.value = list.data[i];
+        return true;
+    }
+
+    free((ptr)it);
+    return false;
+}
+
+proc list_it_at_end(ListIterator it) -> qword {
+    if(it.reversed) {
+        return it.lindex == 0;
+    }
+
+    return it.lindex >= it.list.current_pos;
+}

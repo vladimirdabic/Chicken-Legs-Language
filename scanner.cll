@@ -1,0 +1,415 @@
+%include "std.cll"
+%include "string.cll"
+%include "dynamic_list.cll"
+%include "hashtable.cll"
+%include "token_types.cll"
+
+
+struct ScannerData {
+    dword pos;
+    dword start;
+    byte* source;
+    byte* file_name;
+    word row;
+    word col;
+    dword source_size;
+    DynamicList tokens;
+}
+
+
+struct Token {
+    byte type;
+    ptr ptr_value;
+    qword num_value;
+    
+    byte* file_name;
+    word row;
+    word col;
+}
+
+
+HashTable scanner_ht_keywords = 0;
+
+proc cll_scanner_error(ScannerData scanner, byte* message) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] %s", scanner.file_name, scanner.row, scanner.col, message);
+    exit(1);
+}
+
+proc cll_scanner_unexpected(ScannerData scanner, byte char) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] Unexpected character '%c'", scanner.file_name, scanner.row, scanner.col, char);
+    exit(1);
+}
+
+proc cll_scanner_expected(ScannerData scanner, byte char) {
+    fprintf(stderr, "%s:%d:%d: [ERROR] Expected character: %c", scanner.file_name, scanner.row, scanner.col, char);
+    exit(1);
+}
+
+proc cll_scanner_available(ScannerData scanner) -> byte {
+    return scanner.pos < scanner.source_size;
+}
+
+proc cll_scanner_token(ScannerData scanner, byte type) {
+    Token token res;
+    token.type = type;
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scanner_advance(ScannerData scanner) -> byte {
+    if(!cll_scanner_available(scanner)) return 0;
+    
+    byte chr = scanner.source[scanner.pos];
+    scanner.pos = scanner.pos + 1;
+    return chr;
+}
+
+proc cll_scanner_peek(ScannerData scanner) -> byte {
+    if(!cll_scanner_available(scanner)) return 0;
+    
+    return scanner.source[scanner.pos];
+}
+
+proc cll_scanner_peekNext(ScannerData scanner) -> byte {
+    if((scanner.pos + 1) >= scanner.source_size) return 0;
+    
+    return scanner.source[scanner.pos + 1];
+}
+
+proc cll_scanner_match(ScannerData scanner, byte expected) -> byte {
+    if(!cll_scanner_available(scanner)) return false;
+    if(scanner.source[scanner.pos] != expected) return false;
+
+    scanner.pos = scanner.pos + 1;
+    return true;
+}
+
+proc cll_scanner_consume(ScannerData scanner, byte expected) -> byte {
+    if(cll_scanner_match(scanner, expected)) return scanner.source[scanner.pos-1];
+    cll_scanner_expected(scanner, expected);
+    return 0;
+}
+
+proc is_digit(byte c) -> byte {
+    return c >= '0' && c <= '9';
+}
+
+proc is_alpha(byte c) -> byte {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+proc is_alpha_numeric(byte c) -> byte {
+    return is_digit(c) || is_alpha(c);
+}
+
+proc cll_scan_number(ScannerData scanner) {
+    while(is_digit(cll_scanner_peek(scanner)))
+        scanner.pos = scanner.pos + 1;
+
+    dword size = scanner.pos - scanner.start;
+    byte* number = malloc(size + 1);
+    number[size] = 0;
+    memcpy(number, (byte*)((qword)scanner.source) + scanner.start, size);
+
+    Token token res;
+    token.type = TT_NUMBER;
+    token.ptr_value = NULL;
+    token.num_value = atoll(number);
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+
+    free(number);
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scan_identifier(ScannerData scanner) {
+    while(is_alpha_numeric(cll_scanner_peek(scanner)))
+        scanner.pos = scanner.pos + 1;
+
+    dword size = scanner.pos - scanner.start;
+    byte* identifier = malloc(size + 1);
+    identifier[size] = 0;
+    memcpy(identifier, (byte*)((qword)scanner.source) + scanner.start, size);
+    
+    Token token res;
+    token.type = TT_IDENTIFIER;
+
+    qword keyword_id = ht_get(scanner_ht_keywords, identifier);
+    if(keyword_id != NULL) {
+        token.type = keyword_id;
+    }
+
+    token.ptr_value = identifier;
+    token.num_value = NULL;
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scan_macro(ScannerData scanner) {
+    while(is_alpha_numeric(cll_scanner_peek(scanner)))
+        scanner.pos = scanner.pos + 1;
+
+    dword size = scanner.pos - scanner.start;
+    byte* identifier = malloc(size + 1);
+    byte* macro_identifier = malloc(size + 2);
+    identifier[size] = 0;
+    macro_identifier[size] = 0;
+    // macro_identifier[0] = '%';
+    memcpy(identifier, (byte*)((qword)scanner.source) + scanner.start + 1, size - 1);
+    memcpy(macro_identifier, (byte*)((qword)scanner.source) + scanner.start, size);
+    
+    Token token res;
+    token.type = TT_IDENTIFIER;
+
+    qword macro_id = ht_get(scanner_ht_keywords, macro_identifier);
+    if(macro_id != NULL) {
+        cll_scanner_token(scanner, macro_id);
+        return;
+    }
+
+    qword keyword_id = ht_get(scanner_ht_keywords, identifier);
+    if(keyword_id != NULL) {
+        token.type = keyword_id;
+    }
+
+    token.ptr_value = identifier;
+    token.num_value = NULL;
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+
+    cll_scanner_token(scanner, TT_PRECENT);
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scan_string(ScannerData scanner) {
+    while(cll_scanner_peek(scanner) != '"' && cll_scanner_available(scanner)) {
+        if(cll_scanner_peek(scanner) == '\n') cll_scanner_error(scanner, "New lines aren't allowed in strings");
+        // scanner.pos = scanner.pos + 1;
+        byte c = cll_scanner_advance(scanner);
+        if(c == '\\') cll_scanner_advance(scanner);
+    }
+
+    // closing "
+    scanner.pos = scanner.pos + 1;
+
+    dword size = scanner.pos - scanner.start - 2;
+    byte* str = malloc(size + 1);
+    str[size] = 0;
+    memcpy(str, (byte*)((qword)scanner.source) + (scanner.start + 1), size);
+    
+    Token token res;
+    token.type = TT_STRING;
+    token.ptr_value = str;
+    token.num_value = NULL;
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scan_char(ScannerData scanner) {
+    if(!cll_scanner_available(scanner))
+        cll_scanner_error(scanner, "Unclosed character literal");
+
+    byte char = cll_scanner_advance(scanner);
+
+    if(char == '\\') {
+        byte next = cll_scanner_advance(scanner);
+        if(next == 'n') char = '\n';
+        else if(next == 'r') char = '\r';
+        else if(next == 't') char = '\t';
+        else if(next == '0') char = 0;
+        else if(next == '1') char = 1;
+        else if(next == '\\') char = '\\';
+        else char = next;
+    }
+
+    cll_scanner_consume(scanner, '\'');
+
+    Token token res;
+    token.type = TT_NUMBER;
+    token.ptr_value = NULL;
+    token.num_value = char;
+    token.col = scanner.col;
+    token.row = scanner.row;
+    token.file_name = scanner.file_name;
+
+    cll_list_append(scanner.tokens, (qword)token);
+}
+
+proc cll_scanner_scan_token(ScannerData scanner) {
+    byte c = cll_scanner_advance(scanner);
+
+    if(c == ' ' || c == '\t' || c == '\r') {
+        return;
+    }
+    else if(c == '\n') {
+        scanner.row = scanner.row + 1;
+        scanner.col = 0;
+    }
+    else if(c == '+') { cll_scanner_token(scanner, TT_PLUS); }
+    else if(c == '-') { if(cll_scanner_match(scanner, '>')) cll_scanner_token(scanner, TT_POINTER_ARROW); else cll_scanner_token(scanner, TT_MINUS); }
+    else if(c == '*') { cll_scanner_token(scanner, TT_STAR); }
+    else if(c == '(') { cll_scanner_token(scanner, TT_OPEN_PAREN); }
+    else if(c == ')') { cll_scanner_token(scanner, TT_CLOSE_PAREN); }
+    else if(c == '{') { cll_scanner_token(scanner, TT_OPEN_BRACE); }
+    else if(c == '}') { cll_scanner_token(scanner, TT_CLOSE_BRACE); }
+    else if(c == '[') { cll_scanner_token(scanner, TT_OPEN_SQUARE); }
+    else if(c == ']') { cll_scanner_token(scanner, TT_CLOSE_SQUARE); }
+    else if(c == ';') { cll_scanner_token(scanner, TT_SEMICOLON); }
+    else if(c == '.') {
+        if(cll_scanner_match(scanner, '.')) {
+            if(cll_scanner_match(scanner, '.')) {
+                cll_scanner_token(scanner, TT_VARARGS);
+            } else {
+                cll_scanner_token(scanner, TT_DOT);
+                cll_scanner_token(scanner, TT_DOT);
+            }
+        } else {
+            cll_scanner_token(scanner, TT_DOT);
+        }
+    }
+    else if(c == ',') { cll_scanner_token(scanner, TT_COMMA); }
+    else if(c == '|') { if(cll_scanner_match(scanner, '|')) cll_scanner_token(scanner, TT_OR); else cll_scanner_token(scanner, TT_PIPE); }
+    else if(c == '^') { cll_scanner_token(scanner, TT_ARROW_UP); }
+    else if(c == '&') { if(cll_scanner_match(scanner, '&')) cll_scanner_token(scanner, TT_DOUBLE_AND); else cll_scanner_token(scanner, TT_AND); }
+    else if(c == '%') {
+        if(is_alpha(cll_scanner_peek(scanner))) {
+            scanner.pos = scanner.pos + 1;
+            cll_scan_macro(scanner);
+        } else {
+            cll_scanner_token(scanner, TT_PRECENT);
+        }
+    }
+    else if(c == '=') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_DOUBLE_EQUALS); else cll_scanner_token(scanner, TT_EQUALS); }
+    else if(c == '!') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_NOT_EQUALS); else cll_scanner_token(scanner, TT_BANG); }
+    else if(c == '>') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_GREATER_EQUALS); else cll_scanner_token(scanner, TT_GREATER); }
+    else if(c == '<') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_LOWER_EQUALS); else cll_scanner_token(scanner, TT_LOWER); }
+    else if(c == '/') {
+        if(cll_scanner_match(scanner, '/')) {
+            while((cll_scanner_peek(scanner) != '\n') && cll_scanner_available(scanner)) scanner.pos = scanner.pos + 1;
+        } else {
+            cll_scanner_token(scanner, TT_SLASH);
+        }
+    }
+    else if(c == '"') { cll_scan_string(scanner); }
+    else if(c == '\'') { cll_scan_char(scanner); }
+    else if(is_digit(c)) { cll_scan_number(scanner); }
+    else if(is_alpha(c)) { cll_scan_identifier(scanner); }
+    else {
+        cll_scanner_unexpected(scanner, c);
+    }
+}
+
+proc cll_scan(ScannerData scanner, byte* source, byte* file_name) {
+    scanner.pos = 0;
+    scanner.source = source;
+    scanner.file_name = file_name;
+    scanner.source_size = strlen(source);
+    scanner.tokens = cll_list_create();
+    scanner.row = 1;
+    scanner.col = 1;
+
+    if(scanner_ht_keywords == NULL) {
+        scanner_ht_keywords = ht_create();
+
+        ht_set(scanner_ht_keywords, "proc", TT_PROC);
+        ht_set(scanner_ht_keywords, "struct", TT_STRUCT);
+        ht_set(scanner_ht_keywords, "if", TT_IF);
+        ht_set(scanner_ht_keywords, "else", TT_ELSE);
+        ht_set(scanner_ht_keywords, "true", TT_TRUE);
+        ht_set(scanner_ht_keywords, "false", TT_FALSE);
+        ht_set(scanner_ht_keywords, "while", TT_WHILE);
+        ht_set(scanner_ht_keywords, "push", TT_PUSH);
+        ht_set(scanner_ht_keywords, "pop", TT_POP);
+        ht_set(scanner_ht_keywords, "drop", TT_POP);
+        ht_set(scanner_ht_keywords, "store", TT_POP);
+        ht_set(scanner_ht_keywords, "dup", TT_DUP);
+        ht_set(scanner_ht_keywords, "swap", TT_SWAP);
+        ht_set(scanner_ht_keywords, "over", TT_OVER);
+        ht_set(scanner_ht_keywords, "ret", TT_RET);
+        ht_set(scanner_ht_keywords, "add", TT_ADD);
+        ht_set(scanner_ht_keywords, "sub", TT_SUB);
+        ht_set(scanner_ht_keywords, "mul", TT_MUL);
+        ht_set(scanner_ht_keywords, "divmod", TT_DIVMOD);
+        ht_set(scanner_ht_keywords, "write", TT_WRITE);
+        ht_set(scanner_ht_keywords, "sizeof", TT_SIZEOF);
+        ht_set(scanner_ht_keywords, "return", TT_RETURN);
+        ht_set(scanner_ht_keywords, "global", TT_GLOBAL);
+        ht_set(scanner_ht_keywords, "syscall", TT_SYSCALL);
+        ht_set(scanner_ht_keywords, "extern", TT_EXTERN);
+        ht_set(scanner_ht_keywords, "stdcall", TT_STDCALL);
+        // ht_set(scanner_ht_keywords, "entry", TT_ENTRY);
+        ht_set(scanner_ht_keywords, "byte", TT_BYTE);
+        ht_set(scanner_ht_keywords, "word", TT_WORD);
+        ht_set(scanner_ht_keywords, "dword", TT_DWORD);
+        ht_set(scanner_ht_keywords, "qword", TT_QWORD);
+        ht_set(scanner_ht_keywords, "ptr", TT_PTR);
+        ht_set(scanner_ht_keywords, "res", TT_RES);
+        ht_set(scanner_ht_keywords, "and", TT_DOUBLE_AND);
+        ht_set(scanner_ht_keywords, "or", TT_OR);
+        ht_set(scanner_ht_keywords, "here", TT_HERE);
+        ht_set(scanner_ht_keywords, "break", TT_BREAK);
+        ht_set(scanner_ht_keywords, "%define", TT_DEFINE);
+        ht_set(scanner_ht_keywords, "%include", TT_INCLUDE);
+        ht_set(scanner_ht_keywords, "%sp", TT_STACK_PTR);
+        ht_set(scanner_ht_keywords, "%bp", TT_BASE_PTR);
+    }
+
+    while(cll_scanner_available(scanner)) {
+        scanner.start = scanner.pos;
+        cll_scanner_scan_token(scanner);
+        // update position
+        scanner.col = scanner.col + (scanner.pos - scanner.start);
+    }
+
+    cll_scanner_token(scanner, TT_EOF);
+}
+
+
+proc print_token(ptr file, Token token) {
+    if(token.type == TT_NUMBER)
+        printf("Number(value=%d)\n", token.num_value);
+    else if(token.type == TT_PLUS)
+        fprintf(file, "Plus\n");
+    else if(token.type == TT_MINUS)
+        fprintf(file, "Minus\n");
+    else if(token.type == TT_SLASH)
+        fprintf(file, "Slash\n");
+    else if(token.type == TT_STAR)
+        fprintf(file, "Star\n");
+    else if(token.type == TT_OPEN_PAREN)
+        fprintf(file, "Open_Paren\n");
+    else if(token.type == TT_CLOSE_PAREN)
+        fprintf(file, "Close_Paren\n");
+    else if(token.type == TT_IDENTIFIER)
+        fprintf(file, "Identifier(name='%s')\n", token.ptr_value);
+    else if(token.type == TT_STRING)
+        fprintf(file, "String(value='%s')\n", token.ptr_value);
+    else
+        fprintf(file, "Unknown(ID=%d)\n", token.type);
+}
+
+
+proc free_tokens(DynamicList tokens) {
+    qword i = 0;
+
+    while(i < tokens.current_pos) {
+        if(((Token)tokens.data[i]).type == TT_STRING || ((Token)tokens.data[i]).type == TT_IDENTIFIER)
+            free(((Token)tokens.data[i]).ptr_value);
+
+        free((ptr)tokens.data[i]);
+        i = i + 1;
+    }
+    
+    free(tokens.data);
+    free((ptr)tokens);
+}

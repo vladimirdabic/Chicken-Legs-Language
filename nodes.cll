@@ -1,0 +1,266 @@
+%include "node_types.cll"
+%include "type_ids.cll"
+%include "dynamic_list.cll"
+
+%define NODE_BASE [
+    byte node_type
+]
+
+%define TOKEN_LOCATION [
+    byte* file_name;
+    word row;
+    word col
+]
+
+struct Type;
+
+struct Type {
+    byte id;
+    byte is_base_type;
+    Type base_type;
+}
+
+struct StructType {
+    byte id;
+    byte is_base_type;
+    Type base_type;
+    byte* struct_name;
+    byte declared;
+    TOKEN_LOCATION;
+}
+
+
+struct NamedTypeArg {
+    Type type;
+    byte* name;
+}
+
+struct Node {
+    NODE_BASE;
+}
+
+struct NodeProgramVariable {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+    Type type;
+    Node value;
+    byte is_global;
+}
+
+struct NodeLocalVariable {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+    Type type;
+    Node value;
+}
+
+struct NodeVariable {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+}
+
+struct NodeAssignVariable {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+    Node value;
+}
+
+struct NodeNumberLiteral {
+    NODE_BASE;
+    qword value;
+}
+
+struct NodeStringLiteral {
+    NODE_BASE;
+    byte* value;
+    TOKEN_LOCATION;
+}
+
+struct NodeBinaryOperation {
+    NODE_BASE;
+    byte operation;
+    Node left;
+    Node right;
+}
+
+struct NodeProgramFunction {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+    byte is_global;
+    byte is_stdcall;
+    DynamicList args;
+    Type return_type;
+    DynamicList body;
+    byte varargs;
+    byte forward;
+}
+
+struct NodePush {
+    NODE_BASE;
+    Node value;
+}
+
+struct NodePop {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+}
+
+struct NodeCallStackOp {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+    byte args_passed;
+}
+
+struct NodeSimpleStackOperation {
+    NODE_BASE;
+    byte operation;
+    TOKEN_LOCATION;
+}
+
+struct NodeReturn {
+    NODE_BASE;
+    Node value;
+    TOKEN_LOCATION;
+}
+
+struct NodeExprStmt {
+    NODE_BASE;
+    Node expr;
+}
+
+struct NodeCallFunction {
+    NODE_BASE;
+    byte* name;
+    DynamicList args;
+    TOKEN_LOCATION;
+}
+
+struct NodeProgramExternFunction {
+    NODE_BASE;
+    Type return_type;
+    byte* name;
+    byte is_stdcall;
+    NamedTypeArg* args;
+    TOKEN_LOCATION;
+    byte varargs;
+}
+
+struct NodeProgramExternVariable {
+    NODE_BASE;
+    byte* name;
+    Type type;
+    TOKEN_LOCATION;
+}
+
+struct NodeDerefPtr {
+    NODE_BASE;
+    Node pointer;
+    Node offset;
+    TOKEN_LOCATION;
+}
+
+struct NodeSetAtPtr {
+    NODE_BASE;
+    Node pointer;
+    Node offset;
+    Node value;
+    TOKEN_LOCATION;
+}
+
+struct NodeCast {
+    NODE_BASE;
+    Type type;
+    Node value;
+}
+
+struct NodeAddrOf {
+    NODE_BASE;
+    byte* name;
+    TOKEN_LOCATION;
+}
+
+struct NodeReserveUninitialized {
+    NODE_BASE;
+    Type type;
+    dword size;
+    TOKEN_LOCATION;
+}
+
+struct NodeReserveInitialized {
+    NODE_BASE;
+    Type type;
+    DynamicList data;
+    TOKEN_LOCATION;
+}
+
+struct NodeIfStmt {
+    NODE_BASE;
+    Node value;
+    Node body;
+    Node else_body;
+}
+
+struct NodeWhileStmt {
+    NODE_BASE;
+    Node value;
+    Node body;
+}
+
+struct NodeCompoundStmt {
+    NODE_BASE;
+    DynamicList body;
+}
+
+struct NodeProgramStruct {
+    NODE_BASE;
+    byte* name;
+    DynamicList fields;
+    TOKEN_LOCATION;
+}
+
+struct NodeAccessField {
+    NODE_BASE;
+    Node struct_pointer;
+    byte* name;
+    TOKEN_LOCATION;
+}
+
+struct NodeWriteField {
+    NODE_BASE;
+    Node struct_pointer;
+    byte* name;
+    Node value;
+    TOKEN_LOCATION;
+}
+
+struct NodePushRegister {
+    NODE_BASE;
+    byte* register;
+}
+
+struct NodeSizeof {
+    NODE_BASE;
+    Node value;
+}
+
+struct NodeSizeofType {
+    NODE_BASE;
+    Type type;
+}
+
+struct NodeNot {
+    NODE_BASE;
+    Node value;
+}
+
+struct NodeBreak {
+    NODE_BASE;
+    TOKEN_LOCATION;
+}

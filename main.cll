@@ -1,0 +1,199 @@
+%include "std.cll"
+%include "string.cll"
+%include "file.cll"
+
+%include "scanner.cll"
+%include "preprocessor.cll"
+%include "parser.cll"
+%include "generator.cll"
+
+byte** dirs = res byte* [".\\", NULL, NULL];
+
+
+proc shift(dword* argc, byte*** argv) -> byte* {
+    assert((*argc) > 0, here, "Argc is 0");
+    byte* result = **argv;
+    *argv = (byte**)((qword)*argv) + sizeof(ptr);
+    *argc = ((qword)*argc) - 1;
+    return result;
+}
+
+proc usage(ptr stream) {
+    fprintf(stream, "Usage: cll [OPTIONS] <input.cll>\n");
+    fprintf(stream, "OPTIONS:\n");
+    fprintf(stream, "    -o <output>    Provide output path\n");
+    fprintf(stream, "    -a             Only generates the ASM without compiling\n");
+    fprintf(stream, "    -c             Clean mode (Deletes the generated .asm and .o file)\n");
+    fprintf(stream, "    -r             Runs the program after compilation\n");
+    fprintf(stream, "    -h             Print this help to stdout\n");
+}
+
+
+proc build_command(dword argc, byte** argv) {
+    byte* input_file_path = NULL;
+    byte* output_file_path = NULL;
+    byte asm_only = false;
+    byte clean_mode = false;
+    byte run_after = false;
+
+    ScannerData scanner res;
+    preproc preprocessor res;
+
+    while(argc > 0) {
+        byte* flag = shift(&argc, &argv);
+
+        if(!strcmp(flag, "-o")) {
+            if(argc < 1) {
+                usage(stderr);
+                fprintf(stderr, "ERROR: No value is provided for flag `%s`\n", flag);
+                exit(1);
+            }
+
+            output_file_path = shift(&argc, &argv);
+        } else if(!strcmp(flag, "-h")) {
+            usage(stderr);
+            exit(0);
+        } else if(!strcmp(flag, "-c")) {
+            clean_mode = true;
+        } else if(!strcmp(flag, "-a")) {
+            asm_only = true;
+        } else if(!strcmp(flag, "-r")) {
+            run_after = true;
+        } else {
+            if(input_file_path != NULL) {
+                fprintf(stderr, "ERROR: input file path is already specified as `%s`. Multiple file paths aren't supported yet\n", input_file_path);
+                exit(1);
+            }
+
+            input_file_path = flag;
+        }
+    }
+
+    if(input_file_path == NULL) {
+        usage(stderr);
+        fprintf(stderr, "ERROR: no input file path was provided\n");
+        exit(1);
+    }
+
+    if(output_file_path == NULL) {
+        usage(stderr);
+        fprintf(stderr, "ERROR: no output file path was provided\n");
+        exit(1);
+    }
+
+    
+    byte* input = fread_text(input_file_path);
+    if(input == NULL) {
+        fprintf(stderr, "ERROR: input file `%s` not found\n", input_file_path);
+        exit(1);
+    }
+
+    cll_scan(scanner, input, input_file_path);
+    PreprocResult result = cll_pp_preprocess(preprocessor, scanner.tokens, dirs, 3, true);
+    DynamicList decls = cll_pr_parse(result.tokens.data);
+
+    byte* asm_out_name = malloc(strlen(input_file_path) + 5);
+    byte* obj_out_name = malloc(strlen(input_file_path) + 3);
+    sprintf(asm_out_name, "%s.asm", input_file_path);
+    sprintf(obj_out_name, "%s.o", input_file_path);
+
+    printf("[INFO] Generating assembly\n");
+    cll_generate_asm(decls, asm_out_name);
+    printf("[INFO] Generated assembly %s\n", asm_out_name);
+
+    if(asm_only) {
+        exit(0);
+    }
+
+    byte* nasm_cmd = malloc(24 + strlen(asm_out_name) + strlen(obj_out_name));
+    sprintf(nasm_cmd, "nasm -fwin64 %s -o %s", asm_out_name, obj_out_name);
+
+
+    byte* gcc_cmd = malloc(23 + strlen(output_file_path) + strlen(obj_out_name));
+    sprintf(gcc_cmd, "gcc -m64 -g %s -o %s", obj_out_name, output_file_path);
+
+    dword ret_code;
+
+    printf("[CMD] %s\n", nasm_cmd);
+    ret_code = system(nasm_cmd);
+
+    if(ret_code == 1) {
+        fprintf(stderr, "nasm exited with code 1");
+        exit(1);
+    }
+
+    printf("[CMD] %s\n", gcc_cmd);
+    ret_code = system(gcc_cmd);
+
+    if(ret_code == 1) {
+        fprintf(stderr, "gcc exited with code 1");
+        exit(1);
+    }
+
+    if(clean_mode) {
+        remove(asm_out_name);
+        remove(obj_out_name);
+    }
+
+    if(run_after) {
+        system(output_file_path);
+    }
+
+    free(asm_out_name);
+    free(obj_out_name);
+    free(nasm_cmd);
+    free(gcc_cmd);
+    // free_tokens(result.tokens);
+}
+
+proc run_subcommand(dword argc, byte** argv) {
+    return;
+}
+
+global proc main(dword argc, byte** argv) -> dword {
+    // get program directory
+    shift(&argc, &argv);
+    byte* program = malloc(200);
+    GetModuleFileNameA(NULL, program, 200);
+    
+    dword i = strlen(program) - 1;
+
+    while(program[i] != '\\' && i > 0) {
+        i = i - 1;
+    }
+
+    assert(i != 0, here, "Failed to parse compiler directory");
+    byte* compiler_dir = malloc(i + 2);
+    compiler_dir[i + 1] = '\0';
+    memcpy(compiler_dir, program, i + 1);
+    dirs[2] = compiler_dir;
+
+    byte* compiler_include_dir = malloc(strlen(compiler_dir) + 9);
+    sprintf(compiler_include_dir, "%sinclude\\", compiler_dir);
+    dirs[1] = compiler_include_dir;
+
+    if(argc == 0) {
+        usage(stderr);
+        exit(1);
+    }
+
+    build_command(argc, argv);
+
+    free(program);
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

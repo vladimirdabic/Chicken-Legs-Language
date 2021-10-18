@@ -1,0 +1,8 @@
+
+%define TYPE_BYTE   [0]
+%define TYPE_WORD   [1]
+%define TYPE_DWORD  [2]
+%define TYPE_QWORD  [3]
+%define TYPE_PTR    [4]
+%define TYPE_NONE   [5]
+%define TYPE_STRUCT [6]
