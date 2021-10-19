@@ -92,8 +92,12 @@ proc build_command(dword argc, byte** argv) {
     PreprocResult result = cll_pp_preprocess(preprocessor, scanner.tokens, dirs, 3, true);
     DynamicList decls = cll_pr_parse(result.tokens.data);
 
-    byte* asm_out_name = malloc(strlen(input_file_path) + 5);
-    byte* obj_out_name = malloc(strlen(input_file_path) + 3);
+    // byte* asm_out_name = malloc(strlen(input_file_path) + 5);
+    // byte* obj_out_name = malloc(strlen(input_file_path) + 3);
+
+    byte asm_out_name[100];
+    byte obj_out_name[100];
+
     sprintf(asm_out_name, "%s.asm", input_file_path);
     sprintf(obj_out_name, "%s.o", input_file_path);
 
@@ -139,8 +143,8 @@ proc build_command(dword argc, byte** argv) {
         system(output_file_path);
     }
 
-    free(asm_out_name);
-    free(obj_out_name);
+    // free(asm_out_name);
+    // free(obj_out_name);
     free(nasm_cmd);
     free(gcc_cmd);
     // free_tokens(result.tokens);
