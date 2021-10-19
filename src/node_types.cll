@@ -35,3 +35,4 @@
 %define NT_SIZEOF_TYPE [33]
 %define NT_NOT [34]
 %define NT_BREAK [35]
+%define NT_LOCAL_ARRAY [36]

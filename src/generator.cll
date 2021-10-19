@@ -309,6 +309,7 @@ proc cll_gen_extern_func(gendata gen, ptr stream, NodeProgramExternFunction node
 proc cll_gen_program_var(gendata gen, ptr stream, NodeProgramVariable node);
 proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node);
 proc cll_gen_local_var(gendata gen, ptr stream, NodeLocalVariable node);
+proc cll_gen_local_array(gendata gen, ptr stream, NodeLocalArray node);
 proc cll_gen_compound(gendata gen, ptr stream, NodeCompoundStmt node);
 proc cll_gen_assign_var(gendata gen, ptr stream, NodeAssignVariable node);
 proc cll_gen_number(gendata gen, ptr stream, NodeNumberLiteral node);
@@ -541,6 +542,8 @@ proc cll_gen_node(gendata gen, ptr stream, Node node) {
         cll_gen_pop(gen, stream, (NodePop)node);
     } else if(node_type == NT_SIMPLE_STACK_OP) {
         cll_gen_stack_op(gen, stream, (NodeSimpleStackOperation)node);
+    } else if(node_type == NT_LOCAL_ARRAY) {
+        cll_gen_local_array(gen, stream, (NodeLocalArray)node);
     } else {
         fprintf(stderr, "Unimplemented generator for node of type %d\n", node_type);
         exit(1);
@@ -949,9 +952,9 @@ proc cll_gen_variable(gendata gen, ptr stream, NodeVariable node) {
         }
     }
 
-    GlobalData gdata = ht_get(gen.globals, node.name);
+    GlobalData gdata;
 
-    if(gdata) {
+    if((!local) && (gdata = ht_get(gen.globals, node.name))) {
         var_type = gdata.type;
         var_size = gdata.size;
         type_name = cll_type_asm_name(var_type.id);
@@ -1661,6 +1664,42 @@ proc cll_gen_stack_op(gendata gen, ptr stream, NodeSimpleStackOperation node) {
     } else {
         assert(false, here, "Unreachable");
     }
+}
+
+proc cll_gen_local_array(gendata gen, ptr stream, NodeLocalArray node) {
+    byte type_size = cll_get_type_size(node.type.id);
+    byte* type_name = cll_type_asm_name(node.type.id);
+    qword array_size = node.size * type_size;
+
+    gen.local_offset = gen.local_offset + array_size;
+    dword array_offset = gen.local_offset;
+    gen.padding_left = gen.local_offset % 8;
+    gen.locals_size = gen.locals_size + array_size + gen.padding_left;
+    
+    gen.local_offset = gen.local_offset + gen.padding_left;
+    gen.padding_left = 8;
+
+    // gen.padding_left = gen.padding_left - type_size;
+    gen.locals_size = gen.locals_size + 8;
+    gen.local_offset = gen.local_offset + 8;
+    dword ptr_offset = gen.local_offset;
+
+    Type ptr_type res;
+    ptr_type.id = TYPE_PTR;
+    ptr_type.is_base_type = false;
+    ptr_type.base_type = node.type;
+
+    LocalData local res;
+    local.size = 8;
+    local.type = ptr_type;
+    local.offset = gen.local_offset;
+
+    cll_lt_set(gen.cur_locals, node.name, local);
+
+    // byte* register_variation = cll_register_var(RAX, 8);
+    byte* instruction = malloc(48 + strlen(type_name));
+    sprintf(instruction, "lea rax, [rbp - %d]\n    mov %s [rbp - %d], rax", array_offset, "qword", ptr_offset);
+    cll_list_append(gen.cur_body, (qword)instruction);
 }
 
 proc cll_resolve_type(gendata gen, Node node) -> Type {

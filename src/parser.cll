@@ -648,6 +648,24 @@ proc cll_pr_parse_stmt(parserdata data) -> Node {
                 return (Node)node;
             }
         }
+        
+        // array
+        if(cll_pr_match1(data, TT_OPEN_SQUARE)) {
+            Token size = cll_pr_consume(data, TT_NUMBER, "Expected local array size");
+            cll_pr_consume(data, TT_CLOSE_SQUARE, "Expected ']' after array size");
+            cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after local variable declaration");
+    
+            NodeLocalArray node res;
+            node.node_type = NT_LOCAL_ARRAY;
+            node.name = var_name.ptr_value;
+            node.size = size.num_value;
+            node.type = matched;
+            node.file_name = var_name.file_name;
+            node.row = var_name.row;
+            node.col = var_name.col;
+
+            return (Node)node;
+        }
 
         Node var_value;
         if(cll_pr_match1(data, TT_EQUALS))

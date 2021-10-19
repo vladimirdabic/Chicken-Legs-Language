@@ -56,6 +56,14 @@ struct NodeLocalVariable {
     Node value;
 }
 
+struct NodeLocalArray {
+    NODE_BASE;
+    byte* name;
+    Type type;
+    qword size;
+    TOKEN_LOCATION;
+}
+
 struct NodeVariable {
     NODE_BASE;
     byte* name;
