@@ -185,6 +185,7 @@ struct FunctionData {
     byte is_extern;
     byte is_stdcall;
     byte varargs;
+    byte was_called;
     DynamicList body;
 }
 
@@ -358,6 +359,7 @@ proc cll_generate_asm(DynamicList declarations, ptr file_name) {
     gen.local_offset = 0;
     gen.locals_size = 0;
     gen.padding_left = 0;
+    gen.current_label = 0;
 
     FunctionData malloc_data res;
     FunctionData free_data res;
@@ -402,6 +404,7 @@ proc cll_generate_asm(DynamicList declarations, ptr file_name) {
     cll_list_append(gen.externs, (qword)"extern free");
 
     ListIterator it = list_iterator(declarations);
+    HashTableIterator ht_it;
 
     while(list_next(it)) {
         cll_gen_node(gen, NULL, (Node)it.value);
@@ -418,12 +421,23 @@ proc cll_generate_asm(DynamicList declarations, ptr file_name) {
     while(list_next(it)) {
         fprintf(stream, "    %s\n", (byte*)it.value);
     }
+    // extern funcs
+    ht_it = ht_iterator(gen.functions);
+    FunctionData func_data;
+    while(ht_next(ht_it)) {
+        func_data = (FunctionData)ht_it.value;
+        if(func_data.is_extern && func_data.was_called) {
+            fprintf(stream, "    extern %s\n", ht_it.key);
+        }
+    }
+
     fprintf(stream, "\n");
     
     // functions
-    HashTableIterator ht_it = ht_iterator(gen.functions);
+    ht_it = ht_iterator(gen.functions);
     while(ht_next(ht_it)) {
-        if(!((FunctionData)ht_it.value).is_extern) {
+        func_data = (FunctionData)ht_it.value;
+        if(func_data.was_called && !func_data.is_extern) {
             fprintf(stream, "%s:\n", ht_it.key);
             // instructions
             it = list_iterator(((FunctionData)ht_it.value).body);
@@ -571,9 +585,9 @@ proc cll_gen_extern_func(gendata gen, ptr stream, NodeProgramExternFunction node
     func.varargs = node.varargs;
     ht_set(gen.functions, node.name, func);
 
-    byte* extern_str = malloc(8 + strlen(node.name));
-    sprintf(extern_str, "extern %s", node.name);
-    cll_list_append(gen.externs, (qword)extern_str);
+    // byte* extern_str = malloc(8 + strlen(node.name));
+    // sprintf(extern_str, "extern %s", node.name);
+    // cll_list_append(gen.externs, (qword)extern_str);
 }
 
 proc cll_gen_program_var(gendata gen, ptr stream, NodeProgramVariable node) {
@@ -637,15 +651,26 @@ proc cll_gen_program_var(gendata gen, ptr stream, NodeProgramVariable node) {
 }
 
 proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
-    FunctionData func_data res;
-    func_data.return_type = node.return_type;
-    func_data.arguments = node.args;
-    func_data.varargs = node.varargs;
-    func_data.is_stdcall = node.is_stdcall;
-    func_data.is_extern = false;
-    func_data.body = (DynamicList)NULL;
+    FunctionData func_data;
 
-    ht_set(gen.functions, node.name, (qword)func_data);
+    if(!(func_data = ht_get(gen.functions, node.name))) {
+        func_data = (FunctionData)malloc(sizeof(FunctionData));
+        func_data.return_type = node.return_type;
+        func_data.arguments = node.args;
+        func_data.varargs = node.varargs;
+        func_data.is_stdcall = node.is_stdcall;
+        func_data.is_extern = false;
+        func_data.was_called = false;
+
+        // special case for main
+        if(!strcmp(node.name, "main")) {
+            func_data.was_called = true;
+        }
+
+        func_data.body = (DynamicList)NULL;
+        ht_set(gen.functions, node.name, (qword)func_data);
+    }
+
     if(node.forward) return;
 
 
@@ -1397,6 +1422,7 @@ proc cll_gen_call_function(gendata gen, ptr stream, NodeCallFunction node) {
         sprintf(call_inst, "sub rsp, 32\n    call %s\n    add rsp, %d", func_name, 32 + (max(caller_args_len - 4, 0) * 8));
 
 
+    func_data.was_called = true;
     cll_list_append(gen.cur_body, (qword)call_inst);
     cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
 }
