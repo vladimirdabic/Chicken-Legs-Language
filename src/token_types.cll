@@ -72,4 +72,6 @@
 %define TT_BASE_PTR [68]
 %define TT_HERE [69]
 %define TT_BREAK [70]
+%define TT_SHIFT_LEFT [71]
+%define TT_SHIFT_RIGHT [72]
 %define TT_EOF [99]

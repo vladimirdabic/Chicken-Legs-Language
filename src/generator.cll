@@ -660,6 +660,9 @@ proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
     gen.cur_func_name = node.name;
     gen.cur_func = func_data;
     gen.cur_body = body;
+    gen.local_offset = 0;
+    gen.locals_size = 0;
+    gen.padding_left = 0;
 
     if(node.is_global) {
         byte* extern_str = malloc(8 + strlen(node.name));
@@ -1052,6 +1055,10 @@ proc cll_gen_binary_op(gendata gen, ptr stream, NodeBinaryOperation node) {
         cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    or rax, rbx\n    push rax");
     } else if(node.operation == TT_AND) {
         cll_list_append(gen.cur_body, (qword)"pop rax\n    pop rbx\n    and rax, rbx\n    push rax");
+    } else if(node.operation == TT_SHIFT_LEFT) {
+        cll_list_append(gen.cur_body, (qword)"pop rcx\n    pop rbx\n    shl rbx, cl\n    push rbx");
+    } else if(node.operation == TT_SHIFT_RIGHT) {
+        cll_list_append(gen.cur_body, (qword)"pop rcx\n    pop rbx\n    shr rbx, cl\n    push rbx");
     }
 }
 
@@ -1739,7 +1746,7 @@ proc cll_resolve_type(gendata gen, Node node) -> Type {
         byte right_size = cll_get_type_size(right_type.id);
         byte operation = binop.operation;
 
-        if((operation == TT_PLUS) || (operation == TT_MINUS) || (operation == TT_STAR) || (operation == TT_SLASH) || (operation == TT_AND) || (operation == TT_ARROW_UP) || (operation == TT_PIPE)) {
+        if((operation == TT_PLUS) || (operation == TT_MINUS) || (operation == TT_STAR) || (operation == TT_SLASH) || (operation == TT_AND) || (operation == TT_ARROW_UP) || (operation == TT_PIPE) || (operation == TT_SHIFT_LEFT) || (operation == TT_SHIFT_RIGHT)) {
             if(left_size > right_size) {
                 return left_type;
             }

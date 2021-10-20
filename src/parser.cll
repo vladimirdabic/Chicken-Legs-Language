@@ -212,6 +212,7 @@ proc cll_pr_parse_or_and(parserdata data) -> Node;
 proc cll_pr_parse_equals(parserdata data) -> Node;
 proc cll_pr_parse_greater(parserdata data) -> Node;
 proc cll_pr_parse_greater_eq(parserdata data) -> Node;
+proc cll_pr_parse_bitshift(parserdata data) -> Node;
 proc cll_pr_parse_term(parserdata data) -> Node;
 proc cll_pr_parse_factor(parserdata data) -> Node;
 proc cll_pr_parse_call(parserdata data) -> Node;
@@ -781,8 +782,7 @@ proc cll_pr_parse_or_and(parserdata data) -> Node {
 
     push TT_DOUBLE_AND;
     push TT_OR;
-    push TT_PRECENT;
-    while(cll_pr_match(data, 3)) {
+    while(cll_pr_match(data, 2)) {
         byte operation = cll_pr_previous(data).type;
         Node right = cll_pr_parse_equals(data);
         NodeBinaryOperation node res;
@@ -792,7 +792,7 @@ proc cll_pr_parse_or_and(parserdata data) -> Node {
         node.right = right;
         left = (Node)node;
     }
-    drop; drop; drop;
+    drop; drop;
 
     return left;
 }
@@ -838,10 +838,30 @@ proc cll_pr_parse_greater(parserdata data) -> Node {
 }
 
 proc cll_pr_parse_greater_eq(parserdata data) -> Node {
-    Node left = cll_pr_parse_term(data);
+    Node left = cll_pr_parse_bitshift(data);
 
     push TT_GREATER_EQUALS;
     push TT_LOWER_EQUALS;
+    while(cll_pr_match(data, 2)) {
+        byte operation = cll_pr_previous(data).type;
+        Node right = cll_pr_parse_bitshift(data);
+        NodeBinaryOperation node res;
+        node.node_type = NT_BIN_OP;
+        node.operation = operation;
+        node.left = left;
+        node.right = right;
+        left = (Node)node;
+    }
+    drop; drop;
+
+    return left;
+}
+
+proc cll_pr_parse_bitshift(parserdata data) -> Node {
+    Node left = cll_pr_parse_term(data);
+
+    push TT_SHIFT_LEFT;
+    push TT_SHIFT_RIGHT;
     while(cll_pr_match(data, 2)) {
         byte operation = cll_pr_previous(data).type;
         Node right = cll_pr_parse_term(data);
@@ -882,7 +902,8 @@ proc cll_pr_parse_factor(parserdata data) -> Node {
 
     push TT_STAR;
     push TT_SLASH;
-    while(cll_pr_match(data, 2)) {
+    push TT_PRECENT;
+    while(cll_pr_match(data, 3)) {
         byte operation = cll_pr_previous(data).type;
         Node right = cll_pr_parse_call(data);
         NodeBinaryOperation node res;
@@ -892,7 +913,7 @@ proc cll_pr_parse_factor(parserdata data) -> Node {
         node.right = right;
         left = (Node)node;
     }
-    drop; drop;
+    drop; drop; drop;
 
     return left;
 }

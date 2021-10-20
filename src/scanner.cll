@@ -291,8 +291,24 @@ proc cll_scanner_scan_token(ScannerData scanner) {
     }
     else if(c == '=') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_DOUBLE_EQUALS); else cll_scanner_token(scanner, TT_EQUALS); }
     else if(c == '!') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_NOT_EQUALS); else cll_scanner_token(scanner, TT_BANG); }
-    else if(c == '>') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_GREATER_EQUALS); else cll_scanner_token(scanner, TT_GREATER); }
-    else if(c == '<') { if(cll_scanner_match(scanner, '=')) cll_scanner_token(scanner, TT_LOWER_EQUALS); else cll_scanner_token(scanner, TT_LOWER); }
+    else if(c == '>') {
+        if(cll_scanner_match(scanner, '=')) {
+            cll_scanner_token(scanner, TT_GREATER_EQUALS);
+        } else if(cll_scanner_match(scanner, '>')) {
+            cll_scanner_token(scanner, TT_SHIFT_RIGHT);
+        } else {
+            cll_scanner_token(scanner, TT_GREATER);
+        }
+    }
+    else if(c == '<') {
+        if(cll_scanner_match(scanner, '=')) {
+            cll_scanner_token(scanner, TT_LOWER_EQUALS);
+        } else if(cll_scanner_match(scanner, '<')) {
+            cll_scanner_token(scanner, TT_SHIFT_LEFT);
+        } else {
+            cll_scanner_token(scanner, TT_LOWER);
+        }
+    }
     else if(c == '/') {
         if(cll_scanner_match(scanner, '/')) {
             while((cll_scanner_peek(scanner) != '\n') && cll_scanner_available(scanner)) scanner.pos = scanner.pos + 1;

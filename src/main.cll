@@ -92,9 +92,6 @@ proc build_command(dword argc, byte** argv) {
     PreprocResult result = cll_pp_preprocess(preprocessor, scanner.tokens, dirs, 3, true);
     DynamicList decls = cll_pr_parse(result.tokens.data);
 
-    // byte* asm_out_name = malloc(strlen(input_file_path) + 5);
-    // byte* obj_out_name = malloc(strlen(input_file_path) + 3);
-
     byte asm_out_name[100];
     byte obj_out_name[100];
 
@@ -154,6 +151,7 @@ global proc main(dword argc, byte** argv) -> dword {
     // get program directory
     shift(&argc, &argv);
     byte* program = malloc(200);
+    // byte program[200];
     GetModuleFileNameA(NULL, program, 200);
     
     dword i = strlen(program) - 1;
@@ -171,6 +169,8 @@ global proc main(dword argc, byte** argv) -> dword {
     byte* compiler_include_dir = malloc(strlen(compiler_dir) + 9);
     sprintf(compiler_include_dir, "%sinclude\\", compiler_dir);
     dirs[1] = compiler_include_dir;
+
+    // printf("%s\n%s\n", compiler_dir, compiler_include_dir);
 
     if(argc == 0) {
         usage(stderr);
