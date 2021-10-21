@@ -356,11 +356,12 @@ proc cll_scan(ScannerData scanner, byte* source, byte* file_name) {
         ht_set(scanner_ht_keywords, "sub", TT_SUB);
         ht_set(scanner_ht_keywords, "mul", TT_MUL);
         ht_set(scanner_ht_keywords, "divmod", TT_DIVMOD);
-        ht_set(scanner_ht_keywords, "write", TT_WRITE);
+        ht_set(scanner_ht_keywords, "call", TT_CALL);
+        // ht_set(scanner_ht_keywords, "write", TT_WRITE);
         ht_set(scanner_ht_keywords, "sizeof", TT_SIZEOF);
         ht_set(scanner_ht_keywords, "return", TT_RETURN);
         ht_set(scanner_ht_keywords, "global", TT_GLOBAL);
-        ht_set(scanner_ht_keywords, "syscall", TT_SYSCALL);
+        // ht_set(scanner_ht_keywords, "syscall", TT_SYSCALL);
         ht_set(scanner_ht_keywords, "extern", TT_EXTERN);
         ht_set(scanner_ht_keywords, "stdcall", TT_STDCALL);
         // ht_set(scanner_ht_keywords, "entry", TT_ENTRY);

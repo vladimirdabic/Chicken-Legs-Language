@@ -122,8 +122,8 @@ struct NodePop {
 struct NodeCallStackOp {
     NODE_BASE;
     byte* name;
-    TOKEN_LOCATION;
     byte args_passed;
+    TOKEN_LOCATION;
 }
 
 struct NodeSimpleStackOperation {

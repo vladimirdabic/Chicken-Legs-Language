@@ -595,6 +595,26 @@ proc cll_pr_parse_stmt(parserdata data) -> Node {
     }
     drop; drop; drop; drop; drop; drop; drop; drop;
 
+    if(cll_pr_match1(data, TT_CALL)) {
+        Token func_name = cll_pr_consume(data, TT_IDENTIFIER, "Expected function name");
+        byte args = 0;
+
+        if(cll_pr_match1(data, TT_NUMBER)) {
+            args = cll_pr_previous(data).num_value;
+        }
+
+        cll_pr_consume(data, TT_SEMICOLON, "Expected ';' after call statement");
+
+        NodeCallStackOp stackcallop res;
+        stackcallop.node_type = NT_CALL_STACK_OP;
+        stackcallop.name = func_name.ptr_value;
+        stackcallop.args_passed = args;
+        stackcallop.file_name = func_name.file_name;
+        stackcallop.row = func_name.row;
+        stackcallop.col = func_name.col;
+
+        return (Node)stackcallop;
+    }
 
     if(cll_pr_match1(data, TT_OPEN_BRACE)) {
         DynamicList body = cll_pr_parse_block(data);

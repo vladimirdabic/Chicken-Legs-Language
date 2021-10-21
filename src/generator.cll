@@ -186,6 +186,7 @@ struct FunctionData {
     byte is_stdcall;
     byte varargs;
     byte was_called;
+    byte forward_declared;
     DynamicList body;
 }
 
@@ -338,6 +339,7 @@ proc cll_gen_break(gendata gen, ptr stream, NodeBreak node);
 proc cll_gen_push(gendata gen, ptr stream, NodePush node);
 proc cll_gen_pop(gendata gen, ptr stream, NodePop node);
 proc cll_gen_stack_op(gendata gen, ptr stream, NodeSimpleStackOperation node);
+proc cll_gen_call_stack(gendata gen, ptr stream, NodeCallStackOp node);
 proc cll_resolve_type(gendata gen, Node node) -> Type;
 proc cll_type_name2(Type type) -> byte*;
 proc cll_ptr_base(Type type) -> Type;
@@ -558,6 +560,8 @@ proc cll_gen_node(gendata gen, ptr stream, Node node) {
         cll_gen_stack_op(gen, stream, (NodeSimpleStackOperation)node);
     } else if(node_type == NT_LOCAL_ARRAY) {
         cll_gen_local_array(gen, stream, (NodeLocalArray)node);
+    } else if(node_type == NT_CALL_STACK_OP) {
+        cll_gen_call_stack(gen, stream, (NodeCallStackOp)node);
     } else {
         fprintf(stderr, "Unimplemented generator for node of type %d\n", node_type);
         exit(1);
@@ -661,6 +665,7 @@ proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
         func_data.is_stdcall = node.is_stdcall;
         func_data.is_extern = false;
         func_data.was_called = false;
+        func_data.forward_declared = false;
 
         // special case for main
         if(!strcmp(node.name, "main")) {
@@ -669,9 +674,18 @@ proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
 
         func_data.body = (DynamicList)NULL;
         ht_set(gen.functions, node.name, (qword)func_data);
+        
+        if(node.forward) {
+            func_data.forward_declared = true;
+            return;
+        }
+    } else {
+        if(!func_data.forward_declared) {
+            fprintf(stderr, "%s:%d:%d: [ERROR] Redefinition of function '%s'\n", node.file_name, node.row, node.col, node.name); 
+            exit(1);
+        }
     }
 
-    if(node.forward) return;
 
 
     DynamicList body = cll_list_create();
@@ -681,6 +695,7 @@ proc cll_gen_program_func(gendata gen, ptr stream, NodeProgramFunction node) {
 
 
     func_data.body = body;
+    func_data.forward_declared = false;
     gen.cur_locals = cll_local_table((LocalTable)NULL);
     gen.cur_func_name = node.name;
     gen.cur_func = func_data;
@@ -1684,7 +1699,7 @@ proc cll_gen_stack_op(gendata gen, ptr stream, NodeSimpleStackOperation node) {
     } else if(node.operation == TT_DUP) {
         cll_list_append(gen.cur_body, (qword)"pop rax\n    push rax\n    push rax");
     } else if(node.operation == TT_DIVMOD) {
-        cll_list_append(gen.cur_body, (qword)"xor rdx, rdx\n    pop rbx\n    pop rax\n    div rbx\n    push rax\n    push rdx");
+        cll_list_append(gen.cur_body, (qword)"xor rdx, rdx\n    pop rbx\n    pop rax\n    div rbx\n    push rdx\n    push rax");
     } else if(node.operation == TT_RET) {
         cll_list_append(gen.cur_body, (qword)"pop rax\n    mov rsp, rbp\n    pop rbp");
         cll_list_append(gen.cur_body, (qword)"ret");
@@ -1733,6 +1748,48 @@ proc cll_gen_local_array(gendata gen, ptr stream, NodeLocalArray node) {
     byte* instruction = malloc(48 + strlen(type_name));
     sprintf(instruction, "lea rax, [rbp - %d]\n    mov %s [rbp - %d], rax", array_offset, "qword", ptr_offset);
     cll_list_append(gen.cur_body, (qword)instruction);
+}
+
+proc cll_gen_call_stack(gendata gen, ptr stream, NodeCallStackOp node) {
+    byte* func_name = node.name;
+
+    FunctionData func_data;
+    if(!(func_data = ht_get(gen.functions, func_name))) {
+        fprintf(stderr, "%s:%d:%d: [ERROR] Tried calling an undefined function '%s'\n", node.file_name, node.row, node.col, func_name);
+        exit(1);
+    }
+
+    DynamicList callee_args = func_data.arguments;
+    dword args_len;
+
+    if(node.args_passed == 0) {
+        args_len = callee_args.current_pos;
+    } else {
+        args_len = node.args_passed;
+    }
+
+
+    word i = 0;
+    word endl = min(args_len, N_ARGUMENT_REGISTERS);
+    while(i < endl) {
+        byte reg = ARGUMENT_REGISTERS[i];
+        byte* instruction = malloc(8);
+        sprintf(instruction, "pop %s", cll_register_var(reg, 8));
+        cll_list_append(gen.cur_body, (qword)instruction);
+        i = i + 1;
+    }
+
+    byte* call_inst = malloc(48 + strlen(func_name) + (5 * func_data.is_stdcall));
+
+    if(func_data.is_stdcall)
+        sprintf(call_inst, "sub rsp, 32\n    call %s", func_name);
+    else
+        sprintf(call_inst, "sub rsp, 32\n    call %s\n    add rsp, %d", func_name, 32 + (max(args_len - 4, 0) * 8));
+
+
+    func_data.was_called = true;
+    cll_list_append(gen.cur_body, (qword)call_inst);
+    cll_list_append(gen.cur_body, (qword)PUSH_RAX_INST);
 }
 
 proc cll_resolve_type(gendata gen, Node node) -> Type {
